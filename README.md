@@ -8,17 +8,40 @@ macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線
 
 ## 安裝
 
+需求：macOS、Go 1.24 以上（沒有的話 `brew install go`）。密碼登入會用到 macOS 內建的 `/usr/bin/expect` 與 `ssh`，不用另外安裝。
+
 ```sh
+# 1. 安裝
 go install github.com/mark22013333/sshm@latest
+
+# 2. 把 Go 的安裝目錄加進 PATH，並讓行首帶空白的指令不進 history（sshm 送出的連線指令都帶空白）
+echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+echo 'setopt HIST_IGNORE_SPACE' >> ~/.zshrc
+
+# 3. （選用）在 zsh 提示列按 Ctrl+O 叫出 sshm
+sshm zsh-widget >> ~/.zshrc
+
+# 4. 重新載入
+source ~/.zshrc
 ```
 
-需要 Go 1.24 以上。密碼登入會用到 macOS 內建的 `/usr/bin/expect`。
+### 加入機器
+
+三種方式擇一：
+
+- `sshm add` 逐台新增。
+- iTerm2 若是用 `login.exp <port> <user> <host> <password>` 登入，`sshm import-iterm` 一次匯入（見下方「從 iTerm2 匯入」）。
+- 由別人匯出清單給你：對方執行 `sshm export sshm-share.json`（預設**不含密碼**），你執行 `sshm import sshm-share.json`，再於編輯畫面補上自己的密碼。分享清單時請不要加 `--with-passwords`，匯出檔中的密碼是明碼。
+
+### 在 Orca 以外使用
+
+Shift+Enter／Ctrl+T 開分頁連線與 Tunnel 的啟動、停止需要在 [Orca](https://github.com/stablyai/orca) 的 terminal 中執行。在 iTerm2 等其他終端機裡只能原地連線，Tunnel 頁為唯讀。
 
 ## 使用
 
 ```sh
 sshm              # 開機器清單
-sshm tao          # 開清單並預填搜尋字
+sshm acme         # 開清單並預填搜尋字
 sshm add          # 直接開「新增機器」表單
 sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋字
 ```

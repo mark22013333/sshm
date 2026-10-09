@@ -16,7 +16,7 @@ func TestParseArgs(t *testing.T) {
 		name, want string
 	}{
 		{nil, "tui", ""},
-		{[]string{"tao", "prod"}, "tui", "tao prod"},
+		{[]string{"acme", "prod"}, "tui", "acme prod"},
 		{[]string{"add"}, "add", ""},
 		{[]string{"--", "add"}, "tui", "add"},
 		{[]string{"--", "import", "x"}, "tui", "import x"},
