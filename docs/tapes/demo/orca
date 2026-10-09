@@ -1,0 +1,17 @@
+#!/bin/sh
+# 截圖專用的假 orca CLI：不開任何分頁、不連任何機器，只回固定的 JSON。
+# 呼叫紀錄寫到 $XDG_CONFIG_HOME/orca-calls.log，方便確認沒有觸發真正的動作。
+log="${XDG_CONFIG_HOME:-/tmp}/orca-calls.log"
+printf '%s\n' "$*" >> "$log"
+case "$1 $2" in
+  "terminal list")
+    # handle 對應 state.json 裡「ACME PROD DB」的紀錄，讓它顯示為 ●；hostScope 完整，其他 tunnel 顯示 ○
+    printf '%s\n' '{"ok":true,"result":{"terminals":[{"handle":"term_demo_acme_db","title":"⇄ ACME PROD DB","connected":true},{"handle":"term_demo_shell","title":"zsh","connected":true}],"truncated":false,"hostScope":{"hostIds":["local"],"omittedHostIds":[]}}}'
+    ;;
+  "terminal create")
+    printf '%s\n' '{"ok":true,"result":{"terminal":{"handle":"term_demo_new"}}}'
+    ;;
+  *)
+    printf '%s\n' '{"ok":true,"result":{}}'
+    ;;
+esac

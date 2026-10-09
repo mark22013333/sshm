@@ -2,6 +2,10 @@
 
 macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線；在 Orca 裡按 Shift+Enter 會開新分頁連線。規格見 [docs/spec.md](docs/spec.md)。
 
+![sshm 機器清單：依群組折疊（「雲端主機」已收起），每台機器左側有顏色條，名稱下方是 user@host:port](docs/images/host-list.png)
+
+> 本頁截圖全部使用虛構的展示資料，重製方式見 [docs/tapes/README.md](docs/tapes/README.md)。
+
 ## 安裝
 
 ```sh
@@ -19,6 +23,10 @@ sshm add          # 直接開「新增機器」表單
 sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋字
 ```
 
+開啟後游標就在搜尋框，直接打字即可過濾，比對名稱、host、user、群組（不分大小寫）：
+
+![輸入「db」後只剩名稱或 user 含 db 的三台機器](docs/images/search.png)
+
 機器清單的按鍵：
 
 | 鍵 | 動作 |
@@ -31,11 +39,17 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 | Tab | 切換「機器」「Tunnel」頁 |
 | Esc | 清空搜尋，再按一次離開 |
 
+Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必填：名稱、host、user；認證方式與顏色用 ←→ 切換，Ctrl+S 儲存、Esc 取消：
+
+![新增機器表單：名稱、群組、host、port、user、認證方式、密碼、顏色、額外 ssh 參數、自訂指令](docs/images/host-form.png)
+
 資料存在 `~/.config/sshm/hosts.json`（有設 `XDG_CONFIG_HOME` 時改用該目錄），檔案權限 0600、目錄 0700。同時開多個 sshm 也不會互相覆蓋：每次存檔都會先鎖檔（`hosts.json.lock`）、重讀最新內容再寫回；編輯時只套用你改動的欄位，若那台已被另一個 sshm 刪除會顯示錯誤。hosts.json 可以是 symlink，sshm 會寫到連結目標。
 
 ## Tunnel 頁
 
 按 Tab 切到「Tunnel」頁，管理 SSH 轉送（`-L`／`-R`／`-D`）。
+
+![Tunnel 頁：「ACME PROD DB」亮綠色 ● 表示執行中，另外兩條是 ○ 已停止，每列後面是規則摘要](docs/images/tunnel-page.png)
 
 | 鍵 | 動作 |
 |----|------|
@@ -54,6 +68,9 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 - ssh 結束（斷線、轉送失敗或按 Ctrl+C）時，分頁會顯示「Tunnel 已結束（代碼 N），3 秒後關閉此分頁」，3 秒後自動關閉，燈號隨之回到 ○。tunnel 不共用 ssh 的 ControlMaster 連線。
 - 不在 Orca 中執行時 Tunnel 頁唯讀（不能啟動／停止），但仍可新增、編輯、刪除設定。
 - 表單：名稱、機器（輸入文字搜尋、↑↓ 選擇、Enter 確定）、規則（type 用 ←→ 切換 L／R／D；bindAddress 選填；bindPort 必填；L／R 另需 targetHost、targetPort）。Ctrl+A 新增規則、Ctrl+D 刪除游標所在的規則、Ctrl+S 儲存。IPv6 位址直接填（例 `::1`），sshm 會自動加中括號。
+
+  ![Tunnel 編輯表單：一條 tunnel 帶兩條 L 規則，第二條指定了 bindAddress 127.0.0.1](docs/images/tunnel-form.png)
+
 - 刪除機器時，若有 tunnel 引用它，確認訊息會列出這些 tunnel；刪除後 tunnel 設定保留，但啟動時會顯示「機器已不存在」，請編輯改指另一台機器。這種 tunnel 在 `sshm export` 時不會匯出，結果會列出名稱。
 - IPv6 位址可以不加中括號；要加的話必須成對（`[::1]`）。
 
@@ -63,6 +80,8 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 sshm import-iterm                       # 讀 ~/Library/Preferences/com.googlecode.iterm2.plist
 sshm import-iterm --plist <路徑>        # 改讀指定的 plist
 ```
+
+![iTerm2 匯入預覽：可匯入的預設勾選，「無法匯入」的列出原因，與本批另一個 profile 重複的標「重複」且預設不勾](docs/images/import-iterm.png)
 
 - 只處理 Initial Text 含 `login.exp` 的 profile：依 POSIX sh 規則拆分（與 iTerm2 把文字打進 shell 後的結果一致），`login.exp` 之後、`;` 等指令分隔符號之前的 4 個參數依序是 port、user、host、password。名稱取 profile 的 Name，群組取 Tags。
 - 參數裡有會被 shell 展開的寫法（未加單引號的 `$`、反引號、`$'…'`、萬用字元、字首的 `~`）或引號未閉合時，標為「無法匯入」，請改成單引號後再匯入或手動新增。
@@ -94,6 +113,92 @@ sshm import backup.json                     # 匯入
 - 連線後 20 秒內、你還沒自己打字之前才會送。提示出現後要等輸出靜止 0.8 秒、確認仍停在提示上才送，這段期間你一按鍵就不送。
 - 送過一次、超過 20 秒、或你已經開始自己打字之後，就不再比對，所以 `su`、`sudo`、`mysql -p`、從遠端再 ssh 到第三台時的密碼提示都不會被自動填入。密碼錯誤時的第二次提示也不會重送。
 - 若 `~/.ssh/config` 用 `HostName` 改寫了主機名稱，提示上顯示的 host 會和 sshm 裡填的不同，這時不會自動送，請手動輸入（或把 sshm 的 host 改成提示上顯示的名稱）。
+
+## 運作方式
+
+### 連線流程
+
+選好機器後，Enter 一律原地連線；Shift+Enter／Ctrl+T 只有在 Orca 中才開新分頁。實際執行的指令依認證方式而定。
+
+```mermaid
+flowchart TD
+    A["執行 sshm"] --> B["機器清單：搜尋、選一台機器"]
+    B --> V{"重新驗證機器資料<br/>（hosts.json 可能被手改）"}
+    V -->|不合法| X["狀態列顯示原因，不連線"]
+    V -->|Enter| EX["結束 TUI，以 syscall.Exec 原地執行"]
+    V -->|"Shift+Enter／Ctrl+T"| O{"在 Orca 中？<br/>TERM_PROGRAM=Orca 且 ORCA_CLI_BIN_DIR 有值"}
+    O -->|否| EX
+    O -->|是| T["orca terminal create --worktree active<br/>--title='🔴 名稱' --command='連線指令' --focus"]
+    T -->|成功| Q["sshm 結束，在新分頁連線"]
+    T -->|失敗| ER["TUI 顯示錯誤，不改成原地連線"]
+    EX --> C{"連線指令怎麼組"}
+    Q --> C
+    C -->|"customCommand 有值"| CC["整段改用自訂指令"]
+    C -->|"auth = password"| P["sshm-login.exp port user host password [extraArgs]<br/>（expect 腳本自動送密碼）"]
+    C -->|"auth = key"| K["ssh -o StrictHostKeyChecking=accept-new<br/>-p port -i identityFile [extraArgs] -- user@host"]
+    C -->|"auth = none"| N["同 key 但不帶 -i<br/>（交給 ssh-agent 或 ~/.ssh/config）"]
+```
+
+### 自動送密碼的判斷（expect 腳本）
+
+`assets/sshm-login.exp` 只在登入階段、對這次要連的機器送一次密碼，細節見上一節「密碼自動輸入的規則」。
+
+```mermaid
+flowchart TD
+    S["spawn ssh -p port [extraArgs] -- user@host<br/>進入 interact：按鍵即時轉送、監看輸出"] --> W{"發生什麼事"}
+    W -->|"使用者按鍵"| D{"正在回答一個非目標提示？"}
+    D -->|"是（例如跳板機密碼）"| D2["照常轉送，按 Enter 後恢復監看"] --> W
+    D -->|否| OFF["登入階段結束：之後純轉送，不再自動送"]
+    W -->|"輸出最後一行像密碼提示"| T{"距離 spawn 超過 20 秒？<br/>（SSHM_LOGIN_WINDOW）"}
+    T -->|是| OFF
+    T -->|否| M{"提示指名本次 user@host？<br/>user@host's password: ／ (user@host) Password: ／ Password for user@host:"}
+    M -->|"否（只有 Password: 或指名別台）"| NO["不送、不消耗額度，標記為非目標提示"] --> W
+    M -->|是| Q{"等輸出靜止 0.8 秒"}
+    Q -->|"期間使用者按鍵"| OFF
+    Q -->|"有新輸出且不再是提示"| W
+    Q -->|"靜止且仍停在提示"| SEND["送出密碼與 Enter（只送這一次）"] --> OFF
+    W -->|"ssh 結束"| EXIT["回傳 ssh 的結束碼<br/>（被 signal 結束時回 128+n）"]
+    Q -->|"ssh 結束"| EXIT
+    OFF -->|"ssh 結束"| EXIT
+```
+
+### Tunnel 的狀態
+
+燈號由 `state.json` 的紀錄加上 `orca terminal list` 的查詢結果決定。
+
+```mermaid
+stateDiagram-v2
+    state "○ 已停止" as Stopped
+    state "◌ 佔位中（已有紀錄、還沒有 handle）" as Reserved
+    state "● 執行中" as Running
+    state "◌ 無法確認" as Unknown
+    state "● 分頁顯示「Tunnel 已結束（代碼 N）」" as Ending
+
+    [*] --> Stopped
+    Stopped --> Reserved : Enter 啟動
+    Reserved --> Running : 開分頁並取得 handle
+    Reserved --> Stopped : 開分頁失敗，或 1 分鐘內仍無 handle
+    Running --> Stopped : Enter 停止（orca terminal close）
+    Running --> Ending : ssh 結束（斷線、轉送失敗、Ctrl+C）
+    Ending --> Stopped : 3 秒後分頁自動關閉
+    Running --> Unknown : 查詢失敗、清單不完整、分頁重連中
+    Unknown --> Running : 再次查到 handle
+    Unknown --> Stopped : 清單完整且查無 handle
+
+    note right of Reserved
+        在 state.json 的鎖內佔位，已有紀錄就拒絕，
+        避免兩個 sshm 同時啟動同一條 tunnel。
+    end note
+    note right of Unknown
+        剛進 Tunnel 頁、第一次查詢還沒回來時，有紀錄的也顯示 ◌。
+        ◌ 時按 Enter 不會啟動、也不能刪除。
+    end note
+    note left of Running
+        進入 Tunnel 頁時與之後每 3 秒，
+        以 handle 對照 orca terminal list（不看分頁標題）。
+        清單完整且查無 handle 才清除紀錄。
+    end note
+```
 
 ## 已知限制
 

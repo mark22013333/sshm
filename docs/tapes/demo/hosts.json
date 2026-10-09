@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "groups": [
+    { "name": "範例客戶-ACME", "color": "blue" },
+    { "name": "內部服務", "color": "green" },
+    { "name": "雲端主機", "color": "purple" },
+    { "name": "測試環境", "color": "yellow" }
+  ],
+  "hosts": [
+    {
+      "id": "h_demo01", "name": "acme-prod-web", "group": "範例客戶-ACME",
+      "host": "10.0.0.11", "port": 22, "user": "deploy",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "red", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo02", "name": "acme-prod-db", "group": "範例客戶-ACME",
+      "host": "10.0.0.12", "port": 22, "user": "dba",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "red", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo03", "name": "acme-sit-web", "group": "範例客戶-ACME",
+      "host": "10.0.1.21", "port": 22, "user": "deploy",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo04", "name": "acme-sit-db", "group": "範例客戶-ACME",
+      "host": "10.0.1.22", "port": 2222, "user": "dba",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo05", "name": "gitlab-runner", "group": "內部服務",
+      "host": "192.168.1.30", "port": 22, "user": "ops",
+      "auth": "key", "password": "", "identityFile": "~/.ssh/id_ed25519_demo",
+      "color": "", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo06", "name": "監控-grafana", "group": "內部服務",
+      "host": "192.168.1.31", "port": 22, "user": "ops",
+      "auth": "none", "password": "", "identityFile": "",
+      "color": "orange", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo07", "name": "bastion-tokyo", "group": "雲端主機",
+      "host": "bastion.tokyo.example.com", "port": 22, "user": "ops",
+      "auth": "key", "password": "", "identityFile": "~/.ssh/id_ed25519_demo",
+      "color": "", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo08", "name": "k8s-node-01", "group": "雲端主機",
+      "host": "node01.k8s.example.com", "port": 22, "user": "ops",
+      "auth": "key", "password": "", "identityFile": "~/.ssh/id_ed25519_demo",
+      "color": "", "extraArgs": "-J ops@bastion.tokyo.example.com", "customCommand": ""
+    },
+    {
+      "id": "h_demo09", "name": "qa-sandbox", "group": "測試環境",
+      "host": "192.168.1.50", "port": 22, "user": "tester",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "", "extraArgs": "", "customCommand": ""
+    },
+    {
+      "id": "h_demo10", "name": "樹莓派-家用", "group": "",
+      "host": "192.168.1.99", "port": 22, "user": "pi",
+      "auth": "password", "password": "demo-only", "identityFile": "",
+      "color": "white", "extraArgs": "", "customCommand": ""
+    }
+  ],
+  "tunnels": [
+    {
+      "id": "t_demo01", "name": "ACME PROD DB", "hostId": "h_demo02",
+      "rules": [
+        { "type": "L", "bindPort": 13306, "targetHost": "127.0.0.1", "targetPort": 3306 }
+      ]
+    },
+    {
+      "id": "t_demo02", "name": "東京 SOCKS 代理", "hostId": "h_demo07",
+      "rules": [
+        { "type": "D", "bindPort": 1080 }
+      ]
+    },
+    {
+      "id": "t_demo03", "name": "SIT 網站與 Redis", "hostId": "h_demo03",
+      "rules": [
+        { "type": "L", "bindPort": 18080, "targetHost": "127.0.0.1", "targetPort": 8080 },
+        { "type": "L", "bindAddress": "127.0.0.1", "bindPort": 16379, "targetHost": "10.0.1.30", "targetPort": 6379 }
+      ]
+    }
+  ]
+}
