@@ -8,14 +8,14 @@ macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線
 
 ## 安裝
 
-需求：macOS、Go 1.24 以上（沒有的話 `brew install go`）。密碼登入會用到 macOS 內建的 `/usr/bin/expect` 與 `ssh`，不用另外安裝。
+需求：macOS（Apple Silicon 或 Intel）。密碼登入會用到 macOS 內建的 `/usr/bin/expect` 與 `ssh`，不用另外安裝。
 
 ```sh
-# 1. 安裝
-go install github.com/mark22013333/sshm@latest
+# 1. 安裝（一行，自動判斷 Apple Silicon／Intel）
+mkdir -p ~/.local/bin && curl -fsSL "https://github.com/mark22013333/sshm/releases/latest/download/sshm_darwin_$(uname -m | sed s/x86_64/amd64/).tar.gz" | tar xz -C ~/.local/bin sshm
 
-# 2. 把 Go 的安裝目錄加進 PATH，並讓行首帶空白的指令不進 history（sshm 送出的連線指令都帶空白）
-echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+# 2. 把安裝目錄加進 PATH，並讓行首帶空白的指令不進 history（sshm 送出的連線指令都帶空白）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 echo 'setopt HIST_IGNORE_SPACE' >> ~/.zshrc
 
 # 3. （選用）在 zsh 提示列按 Ctrl+O 叫出 sshm
@@ -24,6 +24,12 @@ sshm zsh-widget >> ~/.zshrc
 # 4. 重新載入
 source ~/.zshrc
 ```
+
+確認版本：`sshm --version`。升級時重跑步驟 1 即可。
+
+> 請用上面的 `curl` 安裝。若改用瀏覽器下載壓縮檔，macOS 會因執行檔未經 Apple 簽章而擋下，需要先執行 `xattr -d com.apple.quarantine sshm`。
+
+已安裝 Go 1.24 以上的話，也可以用 `go install github.com/mark22013333/sshm@latest`（裝到 `~/go/bin`）。
 
 ### 加入機器
 
@@ -232,3 +238,14 @@ stateDiagram-v2
 - **Orca 可能把 scrollback 存到磁碟**（依 Orca 原始碼推論，未實測），密碼可能因此留在磁碟上。
 - **密碼不能含 emoji 等非 BMP 字元**：macOS 內建的 expect 是 Tcl 8.5，非 BMP 字元送出時會被重複編碼，導致密碼錯誤。中文等 BMP 字元正常。
 - **新分頁的 shell 要是 POSIX 相容的 shell（zsh、bash、sh）**：連線指令用 POSIX 單引號規則跳脫。fish 對單引號內的 `\` 有不同解讀，密碼或參數含 `\`、`'` 時可能出錯。
+
+## 發版（維護者）
+
+推送 `v*` tag 會觸發 GitHub Actions：在 macOS runner 跑 `go vet`、`go test`，再由 [GoReleaser](https://goreleaser.com) 建立 GitHub Release，上傳 `sshm_darwin_arm64.tar.gz`、`sshm_darwin_amd64.tar.gz` 與 `checksums.txt`（設定在 `.goreleaser.yaml`、`.github/workflows/release.yml`）。
+
+```sh
+goreleaser release --snapshot --clean   # 發版前先在本機試打包，產物在 dist/
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
+```
+

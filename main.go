@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,7 +28,21 @@ const usage = `用法：
   sshm export [--with-passwords] [--force] <檔案>
                        匯出 JSON（預設不含密碼；目的檔已存在時需 --force）
   sshm import <檔案>   匯入 JSON（同 id 且內容不同的項目先列出差異再確認）
+  sshm --version       顯示版本
 `
+
+// version 由 GoReleaser 以 -ldflags "-X main.version=…" 寫入；go install 時改讀模組版本。
+var version = ""
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		return bi.Main.Version
+	}
+	return "(devel)"
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -50,6 +65,8 @@ func parseArgs(args []string) command {
 		return command{name: "tui", query: strings.Join(args[1:], " ")}
 	case "-h", "--help", "help":
 		return command{name: "help"}
+	case "-v", "--version", "version":
+		return command{name: "version"}
 	case "zsh-widget", "add", "import-iterm", "export", "import":
 		return command{name: args[0], args: args[1:]}
 	}
@@ -61,6 +78,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch cmd.name {
 	case "help":
 		fmt.Fprint(stdout, usage)
+		return 0
+	case "version":
+		fmt.Fprintln(stdout, "sshm", versionString())
 		return 0
 	case "zsh-widget":
 		fmt.Fprint(stdout, zshwidget.Script)

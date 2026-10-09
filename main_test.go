@@ -23,6 +23,8 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"zsh-widget"}, "zsh-widget", ""},
 		{[]string{"export", "f.json"}, "export", ""},
 		{[]string{"--help"}, "help", ""},
+		{[]string{"--version"}, "version", ""},
+		{[]string{"-v"}, "version", ""},
 	}
 	for _, c := range cases {
 		got := parseArgs(c.args)
@@ -94,5 +96,15 @@ func TestApplyITermZeroSelectionDoesNotWrite(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("不應建立或寫入 hosts.json：%v", err)
+	}
+}
+
+func TestVersionOutput(t *testing.T) {
+	old := version
+	defer func() { version = old }()
+	version = "v9.9.9"
+	var out, errb bytes.Buffer
+	if rc := run([]string{"--version"}, &out, &errb); rc != 0 || out.String() != "sshm v9.9.9\n" {
+		t.Fatalf("rc=%d out=%q", rc, out.String())
 	}
 }
