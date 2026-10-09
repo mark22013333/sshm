@@ -64,7 +64,11 @@ func ExecRunner(ctx context.Context, argv []string) ([]byte, []byte, error) {
 func (o OrcaEnv) OpenTab(run Runner, title, text string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	out, stderr, err := run(ctx, o.CreateArgv(title, text))
+	return openWith(ctx, run, o.CreateArgv(title, text))
+}
+
+func openWith(ctx context.Context, run Runner, argv []string) (string, error) {
+	out, stderr, err := run(ctx, argv)
 	handle, perr := parseHandle(out)
 	if err != nil {
 		if perr != nil {

@@ -59,7 +59,7 @@ func runExport(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	n, err := transfer.Export(path, dest, opt)
+	res, err := transfer.Export(path, dest, opt)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,11 @@ func runExport(args []string, out io.Writer) error {
 	if opt.WithPasswords {
 		note = "（含密碼，請妥善保管）"
 	}
-	fmt.Fprintf(out, "已匯出 %d 台機器到 %s%s\n", n, dest, note)
+	fmt.Fprintf(out, "已匯出 %d 台機器到 %s%s\n", res.Hosts, dest, note)
+	if len(res.SkippedTunnels) > 0 {
+		fmt.Fprintf(out, "以下 %d 條 tunnel 指向已不存在的機器或設定不合法，未匯出：%s\n",
+			len(res.SkippedTunnels), strings.Join(res.SkippedTunnels, "、"))
+	}
 	return nil
 }
 

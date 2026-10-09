@@ -406,3 +406,20 @@ func TestApplyHostEditConflicts(t *testing.T) {
 		t.Fatalf("err=%v host=%+v", err, f.Hosts[0])
 	}
 }
+
+func TestValidateTunnelBrackets(t *testing.T) {
+	mk := func(bind, target string) Tunnel {
+		return Tunnel{Name: "x", HostID: "h", Rules: []Rule{{Type: "L", BindAddress: bind, BindPort: 1, TargetHost: target, TargetPort: 2}}}
+	}
+	bad := [][2]string{{"[::1", "h"}, {"::1]", "h"}, {"", "[::1"}, {"[]", "h"}, {"[[::1]]", "h"}, {"", "a[b]"}}
+	for _, c := range bad {
+		if err := ValidateTunnel(mk(c[0], c[1])); err == nil || !strings.Contains(err.Error(), "中括號") {
+			t.Errorf("%q/%q: err = %v", c[0], c[1], err)
+		}
+	}
+	for _, c := range [][2]string{{"", "h"}, {"[::1]", "[fe80::1]"}, {"::1", "::1"}, {"127.0.0.1", "db"}} {
+		if err := ValidateTunnel(mk(c[0], c[1])); err != nil {
+			t.Errorf("%q/%q 應合法：%v", c[0], c[1], err)
+		}
+	}
+}

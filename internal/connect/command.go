@@ -114,7 +114,9 @@ func TunnelArgs(rules []store.Rule) ([]string, error) {
 	if len(rules) == 0 {
 		return nil, errors.New("tunnel 沒有任何規則")
 	}
-	args := []string{"-N", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-o", "ExitOnForwardFailure=yes"}
+	// 不共用既有的 ControlMaster 連線，tunnel 的生死只看這條 ssh
+	args := []string{"-N", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-o", "ExitOnForwardFailure=yes",
+		"-o", "ControlPath=none", "-o", "ControlMaster=no"}
 	for i, r := range rules {
 		spec, err := ruleSpec(r)
 		if err != nil {
@@ -125,13 +127,21 @@ func TunnelArgs(rules []store.Rule) ([]string, error) {
 	return args, nil
 }
 
+// bracketIPv6 含 : 的位址（IPv6）要加中括號，否則 ssh 會把 : 當成欄位分隔。
+func bracketIPv6(addr string) string {
+	if strings.Contains(addr, ":") && !strings.HasPrefix(addr, "[") {
+		return "[" + addr + "]"
+	}
+	return addr
+}
+
 func ruleSpec(r store.Rule) (string, error) {
 	if r.BindPort <= 0 {
 		return "", errors.New("缺少 bindPort")
 	}
 	prefix := ""
 	if r.BindAddress != "" {
-		prefix = r.BindAddress + ":"
+		prefix = bracketIPv6(r.BindAddress) + ":"
 	}
 	switch strings.ToUpper(r.Type) {
 	case "D":
@@ -140,7 +150,7 @@ func ruleSpec(r store.Rule) (string, error) {
 		if r.TargetHost == "" || r.TargetPort <= 0 {
 			return "", errors.New("L/R 規則需要 targetHost 與 targetPort")
 		}
-		return fmt.Sprintf("%s%d:%s:%d", prefix, r.BindPort, r.TargetHost, r.TargetPort), nil
+		return fmt.Sprintf("%s%d:%s:%d", prefix, r.BindPort, bracketIPv6(r.TargetHost), r.TargetPort), nil
 	default:
 		return "", fmt.Errorf("不支援的規則類型 %q", r.Type)
 	}
@@ -148,6 +158,16 @@ func ruleSpec(r store.Rule) (string, error) {
 
 // TunnelPlan 組出 tunnel 連線指令；tunnel 一律用組出的指令，不套用 customCommand。
 func TunnelPlan(h store.Host, t store.Tunnel, scriptPath string) (Plan, error) {
+	// 與匯入、表單存檔相同的驗證：type、port、target、hostId
+	if err := store.ValidateTunnel(t); err != nil {
+		return Plan{}, fmt.Errorf("tunnel 設定不合法：%w", err)
+	}
+	if t.HostID != h.ID {
+		return Plan{}, errors.New("tunnel 的 hostId 與機器不符")
+	}
+	if err := validate(h); err != nil {
+		return Plan{}, err
+	}
 	extra, err := SplitArgs(h.ExtraArgs)
 	if err != nil {
 		return Plan{}, err
@@ -160,5 +180,15 @@ func TunnelPlan(h store.Host, t store.Tunnel, scriptPath string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Argv: argv, Text: ShellText(argv)}, nil
+	return Plan{Argv: argv, Text: ShellText(argv) + tunnelEpilogue()}, nil
+}
+
+// TunnelCloseDelay 是 tunnel 結束後保留分頁的秒數；測試可縮短。
+var TunnelCloseDelay = 10
+
+// tunnelEpilogue 接在 Orca 分頁的指令後：ssh 結束時印出結束碼、等幾秒讓使用者看錯誤，再關閉分頁，
+// 分頁消失後 sshm 的燈號就會回到「已停止」。
+func tunnelEpilogue() string {
+	n := strconv.Itoa(TunnelCloseDelay)
+	return `; sshm_rc=$?; printf '\n%s\n' "Tunnel 已結束（代碼 ${sshm_rc}），` + n + ` 秒後關閉此分頁"; sleep ` + n + `; exit "$sshm_rc"`
 }

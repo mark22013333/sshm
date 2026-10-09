@@ -91,6 +91,9 @@ func ValidateTunnel(t Tunnel) error {
 	if hasControl(t.Name) || hasControl(t.HostID) {
 		return errors.New("名稱或 hostId 不可包含控制字元")
 	}
+	if strings.TrimSpace(t.Name) == "" {
+		return errors.New("缺少名稱")
+	}
 	if t.HostID == "" {
 		return errors.New("缺少 hostId")
 	}
@@ -102,6 +105,9 @@ func ValidateTunnel(t Tunnel) error {
 		n := i + 1
 		if hasControl(r.BindAddress) || hasControl(r.TargetHost) || strings.HasPrefix(r.TargetHost, "-") || strings.HasPrefix(r.BindAddress, "-") {
 			return fmt.Errorf("第 %d 條規則的位址不合法", n)
+		}
+		if !bracketsBalanced(r.BindAddress) || !bracketsBalanced(r.TargetHost) {
+			return fmt.Errorf("第 %d 條規則的位址中括號必須成對，例如 [::1]", n)
 		}
 		if !validPort(r.BindPort) {
 			return fmt.Errorf("第 %d 條規則的 bindPort 必須是 1–65535", n)
@@ -117,4 +123,17 @@ func ValidateTunnel(t Tunnel) error {
 		}
 	}
 	return nil
+}
+
+// bracketsBalanced：位址若含中括號，必須是整段 [ … ] 且內部非空、不再含中括號。
+func bracketsBalanced(a string) bool {
+	if !strings.ContainsAny(a, "[]") {
+		return true
+	}
+	inner, ok := strings.CutPrefix(a, "[")
+	if !ok {
+		return false
+	}
+	inner, ok = strings.CutSuffix(inner, "]")
+	return ok && inner != "" && !strings.ContainsAny(inner, "[]")
 }

@@ -31,9 +31,9 @@ func seed(t *testing.T) (string, string) {
 func TestExportClearsPasswordsByDefault(t *testing.T) {
 	path, dir := seed(t)
 	dest := filepath.Join(dir, "out.json")
-	n, err := Export(path, dest, ExportOptions{})
-	if err != nil || n != 2 {
-		t.Fatalf("n=%d err=%v", n, err)
+	res, err := Export(path, dest, ExportOptions{})
+	if err != nil || res.Hosts != 2 || len(res.SkippedTunnels) != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
 	}
 	data, _ := os.ReadFile(dest)
 	if strings.Contains(string(data), "pw-a") {
@@ -344,5 +344,29 @@ func TestImportRejectsAtInHost(t *testing.T) {
 	var out bytes.Buffer
 	if err := RunImport(path, src, strings.NewReader("y\n"), &out); err == nil || !strings.Contains(err.Error(), "host 不可包含 @") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// 孤兒 tunnel 不匯出並列出名稱，匯出檔可以順利匯回。
+func TestExportSkipsOrphanTunnels(t *testing.T) {
+	path, dir := seed(t)
+	if _, err := store.Update(path, func(f *store.File) error {
+		f.Tunnels = append(f.Tunnels, store.Tunnel{ID: "t_orphan", Name: "孤兒", HostID: "h_gone",
+			Rules: []store.Rule{{Type: "D", BindPort: 1081}}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "out.json")
+	res, err := Export(path, dest, ExportOptions{})
+	if err != nil || len(res.SkippedTunnels) != 1 || res.SkippedTunnels[0] != "孤兒" {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if strings.Contains(hostsBytes(t, dest), "t_orphan") {
+		t.Fatal("孤兒 tunnel 不應出現在匯出檔")
+	}
+	var out bytes.Buffer
+	if err := RunImport(path, dest, strings.NewReader(""), &out); err != nil {
+		t.Fatalf("匯出檔應能匯回：%v", err)
 	}
 }

@@ -97,6 +97,7 @@ func runTUI(query string, startAdd bool) error {
 		Path: path, File: file, ScriptPath: script,
 		Query: query, StartAdd: startAdd,
 		Orca: orca, InOrca: inOrca,
+		StatePath: filepath.Join(filepath.Dir(path), "state.json"),
 	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		return err

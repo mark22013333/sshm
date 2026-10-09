@@ -2,10 +2,13 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mark22013333/sshm/internal/connect"
 	"github.com/mark22013333/sshm/internal/store"
+	"github.com/mark22013333/sshm/internal/tunnelstate"
 )
 
 // Options 是啟動 TUI 所需的資料與外部相依。
@@ -18,6 +21,7 @@ type Options struct {
 	Orca       connect.OrcaEnv
 	InOrca     bool
 	Runner     connect.Runner // 測試可替換；nil 時用 connect.ExecRunner
+	StatePath  string         // tunnel 狀態檔 state.json 的路徑
 }
 
 // Result 是 TUI 結束後交給呼叫端的動作。
@@ -40,6 +44,8 @@ const (
 	modeForm
 	modeConfirmDelete
 	modeBusy
+	modeTunnelForm
+	modeConfirmTunnelDelete
 )
 
 // Model 是 TUI 的狀態。
@@ -58,6 +64,16 @@ type Model struct {
 	form       *hostForm
 	exitOnForm bool // sshm add：表單結束即離開
 	deleteID   string
+	busyMsg    string
+
+	// Tunnel 頁
+	tCursor  int
+	tStatus  map[string]tunnelStatus
+	tState   *tunnelstate.State
+	tTicking bool
+	tForm    *tunnelForm
+	// 查詢序號：丟棄過時結果、tick 時跳過仍在進行中的查詢
+	tSeq, tAppliedSeq, tMinSeq, tInFlight int
 
 	status    string
 	statusErr bool
@@ -129,6 +145,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search.Width = max(10, msg.Width-6)
 		m.ensureVisible()
 		return m, nil
+	case tunnelTickMsg:
+		return m, m.onTunnelTick()
+	case tunnelRefreshMsg:
+		m.applyTunnelRefresh(msg)
+		return m, nil
+	case tunnelActionMsg:
+		return m, m.applyTunnelAction(msg)
 	case orcaDoneMsg:
 		m.mode = modeList
 		if msg.err != nil {
@@ -147,20 +170,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateForm(msg)
 		case modeConfirmDelete:
 			return m.updateConfirm(msg)
+		case modeTunnelForm:
+			return m.updateTunnelForm(msg)
+		case modeConfirmTunnelDelete:
+			return m.updateTunnelConfirm(msg)
 		}
 		if msg.String() == "tab" {
 			if m.page == pageHosts {
 				m.page = pageTunnels
-			} else {
-				m.page = pageHosts
+				m.status = ""
+				return m, m.enterTunnelPage()
 			}
+			m.page = pageHosts
 			return m, nil
 		}
 		if m.page == pageTunnels {
-			if msg.String() == "esc" {
-				return m, tea.Quit
-			}
-			return m, nil
+			return m.updateTunnelList(msg)
 		}
 		return m.updateList(msg)
 	}
@@ -168,6 +193,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.search, cmd = m.search.Update(msg)
 		return m, cmd
+	}
+	if m.mode == modeTunnelForm {
+		if ti := m.tForm.input(m.tForm.current()); ti != nil {
+			var cmd tea.Cmd
+			*ti, cmd = ti.Update(msg)
+			return m, cmd
+		}
 	}
 	if m.mode == modeForm {
 		if ti := m.form.input(m.form.focus); ti != nil {
@@ -239,11 +271,12 @@ func (m *Model) View() string {
 	switch m.mode {
 	case modeForm:
 		return m.form.view()
+	case modeTunnelForm:
+		return m.tForm.view()
 	}
 	header := m.tabsView()
 	if m.page == pageTunnels {
-		return header + "\n\n" + styleDim.Render("Tunnel 頁：下一階段實作。") + "\n\n" +
-			styleHelp.Render("Tab 切換到機器 · Esc 離開")
+		return m.tunnelPageView()
 	}
 	return header + "\n" + m.search.View() + "\n" + m.listView() + "\n" + m.footerView()
 }
@@ -264,9 +297,16 @@ func (m *Model) footerView() string {
 	case m.mode == modeConfirmDelete:
 		name := ""
 		if i := m.file.HostIndex(m.deleteID); i >= 0 {
-			name = m.file.Hosts[i].Name
+			name = store.Printable(m.file.Hosts[i].Name)
 		}
-		status = styleWarn.Render("確定要刪除「" + name + "」嗎？按 y 確認，其他鍵取消")
+		q := "確定要刪除「" + name + "」嗎？"
+		if used := m.file.TunnelsUsingHost(m.deleteID); len(used) > 0 {
+			for i := range used {
+				used[i] = store.Printable(used[i])
+			}
+			q += "以下 tunnel 引用這台機器，設定會保留但無法啟動：" + strings.Join(used, "、") + "。"
+		}
+		status = styleWarn.Render(q + "按 y 確認，其他鍵取消")
 	case m.mode == modeBusy:
 		status = styleInfo.Render("正在開啟 Orca 分頁…")
 	case m.status != "" && m.statusErr:

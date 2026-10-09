@@ -3,6 +3,9 @@ package connect
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -153,24 +156,69 @@ func TestCustomCommandExecUsesShell(t *testing.T) {
 }
 
 func TestTunnelPlan(t *testing.T) {
-	tun := store.Tunnel{Rules: []store.Rule{
+	tun := store.Tunnel{Name: "db", HostID: "h_1", Rules: []store.Rule{
 		{Type: "L", BindPort: 13306, TargetHost: "127.0.0.1", TargetPort: 3306},
 		{Type: "R", BindAddress: "0.0.0.0", BindPort: 8080, TargetHost: "localhost", TargetPort: 80},
 		{Type: "D", BindPort: 1080},
 	}}
-	h := store.Host{Name: "n", Host: "h", User: "u", Port: 22, Auth: "none", ExtraArgs: "-J j"}
+	h := store.Host{ID: "h_1", Name: "n", Host: "h", User: "u", Port: 22, Auth: "none", ExtraArgs: "-J j"}
 	p, err := TunnelPlan(h, tun, script)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "22",
 		"-N", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-o", "ExitOnForwardFailure=yes",
+		"-o", "ControlPath=none", "-o", "ControlMaster=no",
 		"-L", "13306:127.0.0.1:3306", "-R", "0.0.0.0:8080:localhost:80", "-D", "1080", "-J", "j", "--", "u@h"}
 	if !reflect.DeepEqual(p.Argv, want) {
 		t.Fatalf("argv = %q", p.Argv)
 	}
-	if _, err := TunnelPlan(h, store.Tunnel{Rules: []store.Rule{{Type: "L", BindPort: 1}}}, script); err == nil {
+	if _, err := TunnelPlan(h, store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "L", BindPort: 1}}}, script); err == nil {
 		t.Fatal("L without target should fail")
+	}
+}
+
+// IPv6 位址在規則字串中要加中括號。
+func TestTunnelIPv6Brackets(t *testing.T) {
+	h := store.Host{ID: "h_1", Name: "n", Host: "h", User: "u", Port: 22, Auth: "none"}
+	tun := store.Tunnel{Name: "v6", HostID: "h_1", Rules: []store.Rule{
+		{Type: "L", BindPort: 13306, TargetHost: "::1", TargetPort: 3306},
+		{Type: "L", BindAddress: "::1", BindPort: 13306, TargetHost: "h", TargetPort: 22},
+		{Type: "D", BindAddress: "fe80::1", BindPort: 1080},
+		{Type: "R", BindPort: 8080, TargetHost: "[2001:db8::1]", TargetPort: 80},
+	}}
+	p, err := TunnelPlan(h, tun, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(p.Argv, " ")
+	for _, want := range []string{"-L 13306:[::1]:3306", "-L [::1]:13306:h:22", "-D [fe80::1]:1080", "-R 8080:[2001:db8::1]:80"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("argv 缺 %q：%s", want, got)
+		}
+	}
+}
+
+// TunnelPlan 套用與匯入相同的驗證。
+func TestTunnelPlanValidates(t *testing.T) {
+	h := store.Host{ID: "h_1", Name: "n", Host: "h", User: "u", Port: 22, Auth: "none"}
+	cases := []struct {
+		name string
+		tun  store.Tunnel
+		want string
+	}{
+		{"type 不合法", store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "Z", BindPort: 1}}}, "type 只能是"},
+		{"小寫 type", store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "l", BindPort: 1, TargetHost: "a", TargetPort: 2}}}, "type 只能是"},
+		{"port 超出範圍", store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "D", BindPort: 70000}}}, "bindPort"},
+		{"targetPort 超出範圍", store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "L", BindPort: 1, TargetHost: "a", TargetPort: 0}}}, "targetPort"},
+		{"hostId 不符", store.Tunnel{Name: "x", HostID: "h_2", Rules: []store.Rule{{Type: "D", BindPort: 1}}}, "hostId"},
+		{"缺名稱", store.Tunnel{HostID: "h_1", Rules: []store.Rule{{Type: "D", BindPort: 1}}}, "名稱"},
+		{"targetHost 以 - 開頭", store.Tunnel{Name: "x", HostID: "h_1", Rules: []store.Rule{{Type: "L", BindPort: 1, TargetHost: "-oX", TargetPort: 2}}}, "位址"},
+	}
+	for _, c := range cases {
+		if _, err := TunnelPlan(h, c.tun, script); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want 含 %q", c.name, err, c.want)
+		}
 	}
 }
 
@@ -258,5 +306,50 @@ func TestOrcaCreateArgvDashValue(t *testing.T) {
 	got := OrcaEnv{BinDir: "/b"}.CreateArgv("--help", " --x")
 	if got[5] != "--title=--help" || got[6] != "--command= --x" {
 		t.Fatalf("argv = %q", got)
+	}
+}
+
+// tunnel 的分頁指令：ssh 結束後印出結束碼、等待後 exit；用 zsh -f 與 bash 實際解析執行。
+func TestTunnelEpilogueRunsInShells(t *testing.T) {
+	old := TunnelCloseDelay
+	TunnelCloseDelay = 0
+	defer func() { TunnelCloseDelay = old }()
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake login.exp")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\nexit 7\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h := store.Host{ID: "h_1", Name: "n", Host: "10.0.0.1", Port: 22, User: "root", Auth: "password", Password: `p w'$x*`}
+	tun := store.Tunnel{Name: "db", HostID: "h_1", Rules: []store.Rule{{Type: "D", BindPort: 1080}}}
+	p, err := TunnelPlan(h, tun, fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(p.Text, " ") {
+		t.Fatalf("開頭應有空白：%q", p.Text)
+	}
+	var want strings.Builder
+	for _, a := range p.Argv[1:] {
+		want.WriteString("ARG[" + a + "]\n")
+	}
+	for _, shell := range [][]string{{"zsh", "-f", "-c"}, {"bash", "-c"}} {
+		bin, err := exec.LookPath(shell[0])
+		if err != nil {
+			t.Logf("略過 %s：%v", shell[0], err)
+			continue
+		}
+		cmd := exec.Command(bin, append(shell[1:], p.Text)...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 7 {
+			t.Errorf("%s: 結束碼應為 7，err=%v\n%s", shell[0], err, out)
+		}
+		if !strings.HasPrefix(string(out), want.String()) {
+			t.Errorf("%s: argv 還原不一致：\n%s", shell[0], out)
+		}
+		if !strings.Contains(string(out), "Tunnel 已結束（代碼 7），0 秒後關閉此分頁") {
+			t.Errorf("%s: 缺結束訊息：\n%s", shell[0], out)
+		}
 	}
 }

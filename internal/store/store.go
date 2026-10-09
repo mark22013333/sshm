@@ -240,3 +240,6 @@ func syncDir(dir string) {
 	_ = d.Sync()
 	_ = d.Close()
 }
+
+// WithLock 在 path 對應的鎖檔（path.lock，symlink 時在目標旁）內執行 fn；給 hosts.json 以外的狀態檔使用。
+func WithLock(path string, fn func() error) error { return withLock(path, fn) }

@@ -88,7 +88,8 @@ zsh widget 行為：在提示列按 Ctrl+O 開 sshm；提示列上已輸入的�
 - `auth=password`：`<資料目錄>/sshm-login.exp <port> <user> <host> <password> [extraArgs…]`
 - `auth=key`：`ssh -o StrictHostKeyChecking=accept-new -p <port> -i <identityFile> [extraArgs…] <user>@<host>`
 - `auth=none`：同上但不帶 `-i`
-- tunnel 另加 `-N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes` 與每條規則的 `-L/-R/-D`。
+- tunnel 另加 `-N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o ControlPath=none -o ControlMaster=no` 與每條規則的 `-L/-R/-D`。含 `:` 的 bindAddress／targetHost（IPv6）加中括號，中括號必須成對。組指令前完整驗證：type 僅 L/R/D、port 1–65535、L/R 必填 target、hostId 存在、必須有名稱。
+- tunnel 分頁的 `--command` 結尾：連線指令結束後印出「Tunnel 已結束（代碼 N），10 秒後關閉此分頁」、`sleep 10`、以 ssh 的結束碼 `exit`，讓分頁自動關閉、燈號回到 ○。
 
 expect 腳本：程式內嵌 `assets/sshm-login.exp`，啟動時若資料目錄中的副本不存在或內容不同就寫出（權限 `0700`）。行為：
 `spawn ssh -o StrictHostKeyChecking=accept-new -p <port> {*}<extra> -- <user>@<host>`，直接進 `interact` 並監看輸出。自動送密碼只在**登入階段**生效，同時符合以下條件才送、且只送一次：
@@ -124,9 +125,10 @@ Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值�
 Tunnel 頁：
 - 每條 tunnel 一列：狀態燈（● 執行中／○ 已停止）、名稱、機器名稱、規則摘要（例 `L 13306→127.0.0.1:3306`）。
 - 鍵：Enter 啟動／停止、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+x` 刪除。
-- 啟動 = 開 Orca 專用分頁（標題 `⇄ <名稱>`），把回傳的 terminal handle 記錄在 `~/.config/sshm/state.json`。
-- 狀態 = 以 handle 查 `orca terminal list --json` 的 `result.terminals[].handle` 是否存在（**不可用 title 判斷**，shell 會改寫 title）。
-- 停止 = `orca terminal close --terminal <handle>`。不在 Orca 中時 tunnel 頁唯讀並提示。
+- 啟動 = 開 Orca 專用分頁（標題 `⇄ <名稱>`，不加 `--focus`），先在 state 鎖內佔位（已有紀錄就拒絕，防兩個實例重複啟動），取得 handle 後寫入 `~/.config/sshm/state.json`（0600、原子寫入，每筆含 startedAt）；開分頁失敗或佔位超過 1 分鐘仍無 handle 則清除佔位。
+- 狀態 = 以 handle 查 `orca terminal list --json --limit=1000` 的 `result.terminals[].handle` 是否存在（**不可用 title 判斷**，shell 會改寫 title）；進頁與每 3 秒刷新，上一次查詢未回時跳過、較舊的查詢結果丟棄。燈號：● 執行中、○ 已停止、◌ 無法確認——首次查詢回來前有紀錄者、查詢失敗、清單不完整（依 Orca hostScopeCensusIsComplete：截斷、缺 hostScope、略過非 runtime: 主機）、或該分頁正在重連時。◌ 時 Enter 不啟動、不清紀錄；只清「查詢開始前啟動」且確定不存在的紀錄。
+- 停止 = `orca terminal close --terminal <handle>`。不在 Orca 中時 tunnel 頁唯讀並提示（仍可新增／編輯／刪除設定）。
+- state 有紀錄（含 ◌、不在 Orca 中）的 tunnel 不能刪除，需先停止；執行中可編輯，重新啟動才套用。刪除機器時列出引用它的 tunnel 名稱再確認，tunnel 保留，啟動時顯示「機器已不存在」。
 - 不做自動重連。
 
 ## 6. 匯出／匯入
@@ -142,6 +144,7 @@ JSON 格式同第 3 節。
 - 同 id 有差異時列出差異再問：`y` 覆蓋、`n` 只匯入新項目、其他鍵或 EOF 取消；無差異直接寫入。差異清單不顯示密碼、extraArgs、customCommand 的內容，只顯示「已變更」。
 - 匯入檔密碼為空時，只有 host、port、user 三者都未變才沿用現有密碼；任一有變則清空，並在差異清單標明「密碼將沿用／將清空」，完成後列出需補密碼的機器。
 - 群組依名稱比對、tunnel 依 id 比對；選 `n` 時不建立被略過機器的群組。
+- 匯出時略過指向不存在機器或設定不合法的 tunnel，並在結果中列出名稱。
 
 ## 7. 從 iTerm2 匯入
 

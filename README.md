@@ -33,6 +33,29 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 
 資料存在 `~/.config/sshm/hosts.json`（有設 `XDG_CONFIG_HOME` 時改用該目錄），檔案權限 0600、目錄 0700。同時開多個 sshm 也不會互相覆蓋：每次存檔都會先鎖檔（`hosts.json.lock`）、重讀最新內容再寫回；編輯時只套用你改動的欄位，若那台已被另一個 sshm 刪除會顯示錯誤。hosts.json 可以是 symlink，sshm 會寫到連結目標。
 
+## Tunnel 頁
+
+按 Tab 切到「Tunnel」頁，管理 SSH 轉送（`-L`／`-R`／`-D`）。
+
+| 鍵 | 動作 |
+|----|------|
+| ↑↓ | 移動 |
+| Enter | 啟動／停止 |
+| Ctrl+N／Ctrl+E／Ctrl+X | 新增／編輯／刪除（刪除要按 y 確認；有執行紀錄的要先停止） |
+| Tab | 回「機器」頁 |
+| Esc | 離開 |
+
+- 每列顯示狀態燈（● 執行中、○ 已停止、◌ 無法確認）、名稱、機器名稱與規則摘要（例 `L 13306→127.0.0.1:3306`、`D 1080`）。
+- 啟動會在 Orca 開一個專用分頁（標題 `⇄ <名稱>`，不搶焦點），指令是 `ssh -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes` 加上每條規則；密碼登入的機器一樣由 expect 腳本自動送密碼。分頁的 terminal handle 記在 `~/.config/sshm/state.json`（0600）。
+- 狀態以 handle 對照 `orca terminal list` 判斷（不看分頁標題），進入 Tunnel 頁時與之後每 3 秒刷新一次；handle 已不存在就視為已停止並清掉紀錄。停止是 `orca terminal close`。不做自動重連。
+- ◌（無法確認）出現在：第一次查詢還沒回來、Orca 沒回應、清單不完整（被截斷、有主機沒查到、有分頁正在重連）、或正在啟動中。◌ 時按 Enter 不會啟動，避免同一條 tunnel 開出兩個分頁；有執行紀錄（● 或 ◌，含不在 Orca 中）時也不能刪除。
+- 兩個 sshm 同時按啟動時，只有先記錄的那個會開分頁，另一個會提示已有執行紀錄。
+- ssh 結束（斷線、轉送失敗或按 Ctrl+C）時，分頁會顯示「Tunnel 已結束（代碼 N），10 秒後關閉此分頁」，10 秒後自動關閉，燈號隨之回到 ○。tunnel 不共用 ssh 的 ControlMaster 連線。
+- 不在 Orca 中執行時 Tunnel 頁唯讀（不能啟動／停止），但仍可新增、編輯、刪除設定。
+- 表單：名稱、機器（輸入文字搜尋、↑↓ 選擇、Enter 確定）、規則（type 用 ←→ 切換 L／R／D；bindAddress 選填；bindPort 必填；L／R 另需 targetHost、targetPort）。Ctrl+A 新增規則、Ctrl+D 刪除游標所在的規則、Ctrl+S 儲存。IPv6 位址直接填（例 `::1`），sshm 會自動加中括號。
+- 刪除機器時，若有 tunnel 引用它，確認訊息會列出這些 tunnel；刪除後 tunnel 設定保留，但啟動時會顯示「機器已不存在」，請編輯改指另一台機器。這種 tunnel 在 `sshm export` 時不會匯出，結果會列出名稱。
+- IPv6 位址可以不加中括號；要加的話必須成對（`[::1]`）。
+
 ## 從 iTerm2 匯入
 
 ```sh
@@ -80,4 +103,3 @@ sshm import backup.json                     # 匯入
 - **Orca 可能把 scrollback 存到磁碟**（依 Orca 原始碼推論，未實測），密碼可能因此留在磁碟上。
 - **密碼不能含 emoji 等非 BMP 字元**：macOS 內建的 expect 是 Tcl 8.5，非 BMP 字元送出時會被重複編碼，導致密碼錯誤。中文等 BMP 字元正常。
 - **新分頁的 shell 要是 POSIX 相容的 shell（zsh、bash、sh）**：連線指令用 POSIX 單引號規則跳脫。fish 對單引號內的 `\` 有不同解讀，密碼或參數含 `\`、`'` 時可能出錯。
-- Tunnel 頁尚未實作。

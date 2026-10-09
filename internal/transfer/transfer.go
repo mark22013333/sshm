@@ -22,14 +22,22 @@ type ExportOptions struct {
 	Force         bool
 }
 
+// ExportResult 是匯出結果。
+type ExportResult struct {
+	Hosts          int
+	SkippedTunnels []string // 指向已不存在機器（或設定不合法）而未匯出的 tunnel 名稱
+}
+
 // Export 把 hostsPath 的內容寫到 dest（0600）；預設清空密碼，目的檔已存在時需 Force。
-func Export(hostsPath, dest string, opt ExportOptions) (int, error) {
+// 孤兒 tunnel 不匯出，避免匯出檔匯回時整份被拒。
+func Export(hostsPath, dest string, opt ExportOptions) (ExportResult, error) {
+	var res ExportResult
 	if err := checkExportDest(hostsPath, dest, opt.Force); err != nil {
-		return 0, err
+		return res, err
 	}
 	f, err := store.Open(hostsPath)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
 	out := *f
 	out.Hosts = make([]store.Host, len(f.Hosts))
@@ -39,14 +47,23 @@ func Export(hostsPath, dest string, opt ExportOptions) (int, error) {
 		}
 		out.Hosts[i] = h
 	}
+	out.Tunnels = nil
+	for _, t := range f.Tunnels {
+		if err := f.ValidateTunnelIn(t); err != nil {
+			res.SkippedTunnels = append(res.SkippedTunnels, store.Printable(t.Name))
+			continue
+		}
+		out.Tunnels = append(out.Tunnels, t)
+	}
 	data, err := store.Encode(&out)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
 	if err := store.WriteFileAtomic(dest, data, 0o600); err != nil {
-		return 0, err
+		return res, err
 	}
-	return len(out.Hosts), nil
+	res.Hosts = len(out.Hosts)
+	return res, nil
 }
 
 // checkExportDest 拒絕 symlink 目的檔，以及與 hosts.json（含其 symlink 目標、硬連結）為同一檔的目的檔。

@@ -277,10 +277,10 @@ func TestDuplicateEditDelete(t *testing.T) {
 	}
 }
 
-func TestTunnelPagePlaceholder(t *testing.T) {
+func TestTunnelPageReadOnlyOutsideOrca(t *testing.T) {
 	m := New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile()})
 	send(t, m, "tab")
-	if !strings.Contains(m.View(), "下一階段實作") {
+	if !strings.Contains(m.View(), "Tunnel 需要在 Orca 中執行") {
 		t.Fatalf("view = %q", m.View())
 	}
 	send(t, m, "tab")
