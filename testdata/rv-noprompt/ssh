@@ -1,0 +1,4 @@
+#!/bin/bash
+echo "Last login: ok (key auth, no password prompt)"
+printf '$ '; read -r cmd; echo "RAN=[$cmd]"
+printf "Password: "; read -r -t 3 pw; echo "SU_GOT=[$pw]"

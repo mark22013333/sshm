@@ -1,0 +1,47 @@
+#!/bin/bash
+# 假 ssh：依 SCEN 模擬真實 OpenSSH 提示；讀到的內容記到 $LOG
+LOG=${LOG:-/dev/null}
+echo "ARGS: $*" >>"$LOG"
+rd() { local v; IFS= read -r -t "${2:-6}" v; echo "$1=[$v]" >>"$LOG"; echo "$1=[$v]"; REPLY_V=$v; }
+case "$SCEN" in
+jump)  # ProxyJump：跳板與目標各問一次，密碼不同
+  printf "jumpuser@jumphost's password: "; rd JUMP1
+  if [ "$REPLY_V" != "JUMPPW" ]; then
+    echo "Permission denied, please try again."
+    printf "jumpuser@jumphost's password: "; rd JUMP2
+  fi
+  printf "user@target's password: "; rd TARGET ;;
+jumpsame)  # ProxyJump：兩台同密碼
+  printf "jumpuser@jumphost's password: "; rd JUMP1
+  printf "user@target's password: "; rd TARGET ;;
+kbd)  # keyboard-interactive（OpenSSH 8.x+）
+  printf "(user@host) Password: "; rd PW ;;
+pwfor)  # FreeBSD/部分 PAM 格式
+  printf "Password for user@host: "; rd PW ;;
+mfa)  # 先密碼後 OTP
+  printf "(user@host) Password: "; rd PW
+  printf "(user@host) Verification code: "; rd OTP ;;
+mfa_rev)  # 先 OTP 後密碼
+  printf "(user@host) Verification code: "; rd OTP
+  printf "(user@host) Password: "; rd PW ;;
+acceptnew)
+  printf "Warning: Permanently added '10.0.0.24' (ED25519) to the list of known hosts.\r\n" >&2
+  printf "user@host's password: "; rd PW ;;
+late)  # 慢速網路：提示晚於時窗
+  sleep "${DELAY:-3}"; printf "user@host's password: "; rd PW ;;
+typing)  # 使用者在 0.8 秒確認期間開始自己打密碼
+  printf "user@host's password: "; rd PW
+  echo "Last login: ok"; printf '$ '; rd SHELLLINE ;;
+sudo_profile)  # 金鑰登入成功，登入腳本跑 sudo（使用者未按鍵）
+  echo "Last login: ok"; printf "[sudo] password for user: "; rd SUDO ;;
+expiry)  # 密碼過期：登入時窗內 PAM 要求改密碼
+  printf "user@host's password: "; rd PW
+  echo "WARNING: Your password has expired."
+  echo "You must change your password now and login again!"
+  printf "Current password: "; rd CUR ;;
+args)
+  printf "user@host's password: "; rd PW ;;
+custom)  # 任意提示（PROMPT），用來測 host 含特殊字元等情況
+  printf "%s" "$PROMPT"; rd PW ;;
+esac
+exit 0

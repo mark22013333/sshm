@@ -1,0 +1,4 @@
+#!/bin/bash
+printf "u@h's password: "; read -r pw; echo "FIRST=[$pw]"
+echo "Permission denied, please try again."
+printf "u@h's password: "; read -r -t 3 pw2; echo "SECOND=[$pw2]"

@@ -1,0 +1,6 @@
+#!/bin/bash
+# 假 ssh：超過登入時窗才出現密碼提示（例如登入後的 sudo／mysql -p）
+echo "Last login: ok"
+sleep 2
+printf "u@h's password: "
+read -r pw; echo "GOT_PASSWORD=[$pw]"

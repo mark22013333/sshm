@@ -1,0 +1,6 @@
+#!/bin/bash
+# 假 ssh：以最後一個參數（user@host）組出 OpenSSH 格式的密碼提示，印出參數並讀密碼
+echo "ARGS: $*"
+printf "%s's password: " "${!#}"
+read -r pw
+echo "GOT_PASSWORD=[$pw]"

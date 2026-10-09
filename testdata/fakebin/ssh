@@ -1,0 +1,5 @@
+#!/bin/bash
+echo "ARGS: $*"
+printf "user@host's password: "
+read -r pw
+echo "GOT_PASSWORD=[$pw]"

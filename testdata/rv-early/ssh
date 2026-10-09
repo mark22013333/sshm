@@ -1,0 +1,2 @@
+#!/bin/bash
+sleep 1; printf "u@h's password: "; read -r pw; echo "GOT_PASSWORD=[$pw]"; read -r l; echo "GOT_LINE=[$l]"

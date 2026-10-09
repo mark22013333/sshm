@@ -1,0 +1,135 @@
+#!/usr/bin/expect -f
+# 用法：sshm-login.exp <埠> <帳號> <主機> <密碼> [額外 ssh 參數...]
+set port [lindex $argv 0]
+set username [lindex $argv 1]
+set hostname [lindex $argv 2]
+set password [lindex $argv 3]
+set extra [lrange $argv 4 end]
+
+# 只在登入階段自動送密碼：spawn 後 window 秒內、使用者尚未自行輸入、且只送一次。
+set window 20
+if {[info exists env(SSHM_LOGIN_WINDOW)] && [string is integer -strict $env(SSHM_LOGIN_WINDOW)]} {
+    set window $env(SSHM_LOGIN_WINDOW)
+}
+# 提示出現後輸出需靜止這麼久（毫秒）才確認是提示，避免 MOTD 分段寫出時誤判。
+set quiet_ms 800
+# 候選提示：最後一行以「password:」或「password for …:」結尾（後面可接空白或色碼）。
+set prompt_re {(?i)[^\r\n]*password(?: for [^\r\n]*)?:(?:[ \t]|\x1b\[[0-9;?]*[A-Za-z])*$}
+
+spawn ssh -o StrictHostKeyChecking=accept-new -p $port {*}$extra -- $username@$hostname
+set start [clock seconds]
+
+# 提示行是否指名本次目標（OpenSSH 三種格式）；以字串比對，user、host 不當 regex。
+proc is_target_prompt {line} {
+    global username hostname
+    set line [string tolower $line]
+    set uh [string tolower "$username@$hostname"]
+    foreach needle [list "$uh's password:" "($uh) password:" "password for $uh:"] {
+        set idx [string first $needle $line]
+        while {$idx >= 0} {
+            # user@host 前面不能緊接主機名稱字元，避免 jumpuser@ 被當成 user@
+            set before [expr {$idx > 0 ? [string index $line [expr {$idx - 1}]] : ""}]
+            if {[string index $needle 0] eq "(" || [string index $needle 0] eq "p" || ![string match {[a-z0-9._-]} $before]} {
+                return 1
+            }
+            set idx [string first $needle $line [expr {$idx + 1}]]
+        }
+    }
+    return 0
+}
+
+# 提示後 quiet_ms 內：輸出靜止且仍是提示 → yes；使用者按鍵 → user（按鍵已轉送）；有新輸出且不再是提示 → no。
+proc confirm_prompt {} {
+    global quiet_ms prompt_re spawn_id user_spawn_id
+    set tail ""
+    set waited 0
+    while {$waited < $quiet_ms} {
+        after 100
+        incr waited 100
+        set more ""
+        set typed ""
+        expect {
+            -timeout 0
+            -i $user_spawn_id -re {.+} { set typed $expect_out(0,string) }
+            -i $spawn_id -re {.+} { set more $expect_out(0,string) }
+            eof { return eof }
+            timeout {}
+        }
+        if {$typed ne ""} {
+            send -- $typed
+            return user
+        }
+        if {$more ne ""} {
+            send_user -- $more
+            append tail $more
+            if {![regexp $prompt_re $tail]} { return no }
+            set waited 0
+        }
+    }
+    return yes
+}
+
+# declined=1 表示有一個「不是本次目標」的提示在等使用者回答；回答（按 Enter）前的按鍵不結束登入階段。
+set declined 0
+while 1 {
+    set state armed
+    interact {
+        -re {.} {
+            send -- $interact_out(0,string)
+            if {$declined} {
+                if {[string match "\[\r\n\]" $interact_out(0,string)]} { set declined 0 }
+            } else {
+                # 使用者開始自己輸入，登入階段結束
+                set state user
+                return
+            }
+        }
+        -o -re $prompt_re {
+            set line $interact_out(0,string)
+            send_user -- $line
+            if {[clock seconds] - $start > $window} {
+                set state expired
+                return
+            }
+            if {![is_target_prompt $line]} {
+                # 跳板機、su 等其他提示：不送、不消耗額度
+                set declined 1
+                set state retry
+                return
+            }
+            set r [confirm_prompt]
+            switch -- $r {
+                yes { send -- "$password\r"; set state sent }
+                eof { set state eof }
+                user { set state user }
+                default { set state retry }
+            }
+            return
+        }
+        eof { set state eof; return }
+    }
+    if {$state eq "retry"} { continue }
+    # 沒有任何動作就返回＝使用者端（stdin）已 EOF
+    if {$state eq "armed"} { set state stdin_eof }
+    break
+}
+if {$state eq "stdin_eof"} {
+    # 沒有使用者輸入了：等 ssh 自行結束，逾時才關閉
+    expect {
+        -timeout 5
+        eof {}
+        timeout { catch close }
+    }
+} elseif {$state ne "eof"} {
+    catch interact
+}
+
+# 傳回 ssh 的結束碼；被 signal 結束時回 128+訊號編號。
+catch wait result
+if {[lindex $result 4] eq "CHILDKILLED"} {
+    set signals {SIGHUP 1 SIGINT 2 SIGQUIT 3 SIGABRT 6 SIGKILL 9 SIGPIPE 13 SIGTERM 15}
+    set n 1
+    if {[dict exists $signals [lindex $result 5]]} { set n [dict get $signals [lindex $result 5]] }
+    exit [expr {128 + $n}]
+}
+exit [lindex $result 3]

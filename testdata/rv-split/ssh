@@ -1,0 +1,3 @@
+#!/bin/bash
+printf "u@h's pass"; sleep 0.5; printf "word: "
+read -r pw; echo "GOT_PASSWORD=[$pw]"

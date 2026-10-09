@@ -1,0 +1,8 @@
+#!/bin/bash
+# 假 ssh：金鑰直接登入，MOTD 含 password: 字樣，之後讀使用者輸入的一行
+echo "ARGS: $*"
+echo "Your password: expires in 5 days"
+echo "Change password:"
+printf '$ '
+read -r line
+echo "GOT_LINE=[$line]"

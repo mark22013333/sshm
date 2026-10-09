@@ -1,0 +1,3 @@
+#!/bin/bash
+printf "(u@h) Password: \033[0m"
+read -r -t 3 pw; echo "GOT_PASSWORD=[$pw]"

@@ -1,0 +1,5 @@
+#!/bin/bash
+echo "Welcome"
+printf "Please change password:"; sleep 0.5; printf "\n"
+printf '$ '
+read -r line; echo "GOT_LINE=[$line]"

@@ -1,0 +1,6 @@
+#!/bin/bash
+# 假 ssh：MOTD 中出現目標格式的「u@h's password:」且與後文分兩次寫出（間隔 0.5 秒）
+echo "Welcome"
+printf "Reminder: u@h's password:"; sleep 0.5; printf " expires in 3 days\n"
+printf '$ '
+read -r line; echo "GOT_LINE=[$line]"
