@@ -276,7 +276,7 @@ func (m *Model) footerView() string {
 	}
 	where := "Enter 原地連線"
 	if m.opts.InOrca {
-		where = "Enter 新分頁 · Alt+Enter／Ctrl+T 原地"
+		where = "Enter 原地 · Shift+Enter／Ctrl+T 新分頁"
 	}
 	help := styleHelp.Render(where + " · ←→ 折疊 · Ctrl+N 新增 · Ctrl+E 編輯 · Ctrl+D 複製 · Ctrl+X 刪除 · Tab 切頁 · Esc 清空/離開")
 	if status == "" {

@@ -107,8 +107,8 @@ Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值�
 
 開在哪裡：
 - 偵測 Orca：`TERM_PROGRAM=Orca` 且 `ORCA_CLI_BIN_DIR` 有值。
-- **Enter**：在 Orca 中 → 執行 `$ORCA_CLI_BIN_DIR/orca terminal create --worktree active --title "<emoji> <名稱>" --command "<指令>" --focus --json`，成功後 TUI 結束；失敗則在 TUI 顯示錯誤，不改原地連線。不在 Orca 中 → 同 Alt+Enter。
-- **Alt+Enter**：TUI 結束後以 `syscall.Exec` 原地執行連線指令。
+- **Shift+Enter**（Orca 送出 `ESC CR`，與 Alt+Enter 相同序列；2026-10-09 實機確認）或 **Ctrl+T**：在 Orca 中 → 執行 `$ORCA_CLI_BIN_DIR/orca terminal create --worktree active --title "<emoji> <名稱>" --command "<指令>" --focus --json`，成功後 TUI 結束；失敗則在 TUI 顯示錯誤，不改原地連線。不在 Orca 中 → 同 Enter（原地）。
+- **Enter**：TUI 結束後以 `syscall.Exec` 原地執行連線指令。（2026-10-09 依使用者要求與 Shift+Enter 對調。）
 - `--command` 是打進 shell 的文字：指令開頭加一個空白（搭配 zsh `HIST_IGNORE_SPACE` 不進 history），參數一律做 shell quoting。
 
 ## 5. 介面
@@ -118,7 +118,7 @@ Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值�
 機器頁：
 - 頂端搜尋框，開啟即取得焦點；比對名稱、host、user、群組（不分大小寫、子字串）。
 - 清單依群組折疊，群組列顯示機器數；左側色條，名稱下方小字 `user@host:port`。
-- 鍵：↑↓ 移動、Enter 連線（新分頁）、Alt+Enter 或 Ctrl+T 原地連線（Ctrl+T 為 Option 未設成 Alt 時的備援）、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+d` 複製一台、`ctrl+x` 刪除（需二次確認）、←→ 折疊／展開群組、Esc 清空搜尋或離開。
+- 鍵：↑↓ 移動、Enter 原地連線、Shift+Enter 或 Ctrl+T 開 Orca 新分頁（Cmd+Enter 不會送進 terminal）、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+d` 複製一台、`ctrl+x` 刪除（需二次確認）、←→ 折疊／展開群組、Esc 清空搜尋或離開。
 - 表單欄位：名稱、群組（可選既有或輸入新的）、host、port（預設 22）、user、認證方式、密碼／金鑰檔、顏色、額外 ssh 參數、自訂指令。必填：名稱、host、user。
 
 Tunnel 頁：

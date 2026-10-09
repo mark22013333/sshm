@@ -1,6 +1,6 @@
 # sshm
 
-macOS 上的 SSH 機器管理 TUI。在 Orca terminal 裡按 Enter 會開新分頁連線，在其他 terminal 則原地連線。規格見 [docs/spec.md](docs/spec.md)。
+macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線；在 Orca 裡按 Shift+Enter 會開新分頁連線。規格見 [docs/spec.md](docs/spec.md)。
 
 ## 安裝
 
@@ -24,8 +24,8 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 | 鍵 | 動作 |
 |----|------|
 | ↑↓ | 移動 |
-| Enter | 連線（在 Orca 中開新分頁，否則原地連線） |
-| Alt+Enter／Ctrl+T | 原地連線（Orca 沒把 Option 設成 Alt 時，用 Ctrl+T） |
+| Enter | 在目前的 terminal 原地連線 |
+| Shift+Enter／Ctrl+T | 在 Orca 中開新分頁連線，不在 Orca 時改為原地連線（Orca 把 Shift+Enter 送成 ESC+Enter，等同 Alt+Enter；Cmd+Enter 不會送進 terminal，無效） |
 | ←→ | 折疊／展開群組 |
 | Ctrl+N／Ctrl+E／Ctrl+D／Ctrl+X | 新增／編輯／複製／刪除（刪除要按 y 確認） |
 | Tab | 切換「機器」「Tunnel」頁 |

@@ -173,10 +173,11 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setCollapsed(!m.collapsed[r.group])
 			return m, nil
 		}
-		return m.connect(*r.host, m.opts.InOrca)
+		return m.connect(*r.host, false)
+	// Orca 把 Shift+Enter 送成 ESC CR，與 alt+enter 同一序列。
 	case "alt+enter", "ctrl+t":
 		if h, ok := m.currentHost(); ok {
-			return m.connect(h, false)
+			return m.connect(h, m.opts.InOrca)
 		}
 		return m, nil
 	case "ctrl+n":

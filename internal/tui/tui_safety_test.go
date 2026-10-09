@@ -10,20 +10,23 @@ import (
 	"github.com/mark22013333/sshm/internal/store"
 )
 
-func TestCtrlTExecInPlaceInOrca(t *testing.T) {
-	called := false
-	run := func(context.Context, []string) ([]byte, []byte, error) { called = true; return nil, nil, nil }
+func TestCtrlTOpensOrcaTab(t *testing.T) {
+	var got []string
+	run := func(_ context.Context, argv []string) ([]byte, []byte, error) {
+		got = argv
+		return []byte(`{"ok":true,"result":{"terminal":{"handle":"t1"}}}`), nil, nil
+	}
 	m := New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile(), Query: "beta",
 		Orca: connect.OrcaEnv{BinDir: "/orca"}, InOrca: true, Runner: run})
-	if !strings.Contains(m.View(), "Alt+Enter／Ctrl+T 原地") {
-		t.Fatalf("說明列應同時顯示 Alt+Enter 與 Ctrl+T：%q", m.View())
+	if !strings.Contains(m.View(), "Enter 原地 · Shift+Enter／Ctrl+T 新分頁") {
+		t.Fatalf("說明列應顯示新鍵位：%q", m.View())
 	}
-	if !isQuit(send(t, m, "ctrl+t")) || called {
-		t.Fatal("ctrl+t 應結束 TUI 並原地連線，不呼叫 orca")
+	cmd := send(t, m, "ctrl+t")
+	if m.mode != modeBusy || cmd == nil {
+		t.Fatal("ctrl+t 應開 Orca 分頁")
 	}
-	want := "ssh -o StrictHostKeyChecking=accept-new -p 2222 -- ops@10.0.0.2"
-	if got := strings.Join(m.Result().ExecArgv, " "); got != want {
-		t.Fatalf("exec = %q", got)
+	if _, next := m.Update(cmd()); !isQuit(next) || len(got) == 0 || m.Result().ExecArgv != nil {
+		t.Fatalf("ctrl+t 應呼叫 orca 且不原地執行：argv=%q", got)
 	}
 }
 

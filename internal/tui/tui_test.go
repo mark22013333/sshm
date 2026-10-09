@@ -149,7 +149,7 @@ func sampleFile() *store.File {
 	return f
 }
 
-func TestEnterOpensOrcaTab(t *testing.T) {
+func TestShiftEnterOpensOrcaTab(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sshm", "hosts.json")
 	var got []string
 	run := func(_ context.Context, argv []string) ([]byte, []byte, error) {
@@ -158,9 +158,9 @@ func TestEnterOpensOrcaTab(t *testing.T) {
 	}
 	m := New(Options{Path: path, File: sampleFile(), ScriptPath: "/cfg/sshm-login.exp", Query: "alpha",
 		Orca: connect.OrcaEnv{BinDir: "/orca"}, InOrca: true, Runner: run})
-	cmd := send(t, m, "enter")
+	cmd := send(t, m, "alt+enter")
 	if m.mode != modeBusy || cmd == nil {
-		t.Fatal("enter should start orca command")
+		t.Fatal("shift+enter（alt+enter）應開 Orca 分頁")
 	}
 	_, next := m.Update(cmd())
 	if !isQuit(next) {
@@ -182,7 +182,7 @@ func TestOrcaFailureStaysInTUI(t *testing.T) {
 	}
 	m := New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile(), ScriptPath: "/s", Query: "beta",
 		Orca: connect.OrcaEnv{BinDir: "/orca"}, InOrca: true, Runner: run})
-	cmd := send(t, m, "enter")
+	cmd := send(t, m, "alt+enter")
 	_, next := m.Update(cmd())
 	if isQuit(next) || m.mode != modeList {
 		t.Fatal("failure should stay in TUI")
@@ -195,13 +195,13 @@ func TestOrcaFailureStaysInTUI(t *testing.T) {
 	}
 }
 
-func TestAltEnterAndNonOrcaExecInPlace(t *testing.T) {
+func TestEnterExecInPlaceAndNonOrcaShiftEnter(t *testing.T) {
 	called := false
 	run := func(context.Context, []string) ([]byte, []byte, error) { called = true; return nil, nil, nil }
 	m := New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile(), Query: "beta",
 		Orca: connect.OrcaEnv{BinDir: "/orca"}, InOrca: true, Runner: run})
-	if !isQuit(send(t, m, "alt+enter")) {
-		t.Fatal("alt+enter should quit")
+	if !isQuit(send(t, m, "enter")) {
+		t.Fatal("Orca 內按 enter 應原地連線")
 	}
 	want := "ssh -o StrictHostKeyChecking=accept-new -p 2222 -- ops@10.0.0.2"
 	if got := strings.Join(m.Result().ExecArgv, " "); got != want || called {
@@ -209,8 +209,8 @@ func TestAltEnterAndNonOrcaExecInPlace(t *testing.T) {
 	}
 
 	m = New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile(), Query: "gamma", Runner: run})
-	if !isQuit(send(t, m, "enter")) || called {
-		t.Fatal("enter outside Orca should exec in place")
+	if !isQuit(send(t, m, "alt+enter")) || called {
+		t.Fatal("不在 Orca 時 shift+enter 應退回原地連線")
 	}
 	if got := strings.Join(m.Result().ExecArgv, " "); !strings.Contains(got, "-i /k -- dba@db") {
 		t.Fatalf("exec = %q", got)
