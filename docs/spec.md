@@ -89,7 +89,7 @@ zsh widget 行為：在提示列按 Ctrl+O 開 sshm；提示列上已輸入的�
 - `auth=key`：`ssh -o StrictHostKeyChecking=accept-new -p <port> -i <identityFile> [extraArgs…] <user>@<host>`
 - `auth=none`：同上但不帶 `-i`
 - tunnel 另加 `-N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o ControlPath=none -o ControlMaster=no` 與每條規則的 `-L/-R/-D`。含 `:` 的 bindAddress／targetHost（IPv6）加中括號，中括號必須成對。組指令前完整驗證：type 僅 L/R/D、port 1–65535、L/R 必填 target、hostId 存在、必須有名稱。
-- tunnel 分頁的 `--command` 結尾：連線指令結束後印出「Tunnel 已結束（代碼 N），10 秒後關閉此分頁」、`sleep 10`、以 ssh 的結束碼 `exit`，讓分頁自動關閉、燈號回到 ○。
+- tunnel 分頁的 `--command` 結尾：連線指令結束後印出「Tunnel 已結束（代碼 N），3 秒後關閉此分頁」、`sleep 3`（2026-10-10 依使用者回饋由 10 秒改為 3 秒）、以 ssh 的結束碼 `exit`，讓分頁自動關閉、燈號回到 ○。
 
 expect 腳本：程式內嵌 `assets/sshm-login.exp`，啟動時若資料目錄中的副本不存在或內容不同就寫出（權限 `0700`）。行為：
 `spawn ssh -o StrictHostKeyChecking=accept-new -p <port> {*}<extra> -- <user>@<host>`，直接進 `interact` 並監看輸出。自動送密碼只在**登入階段**生效，同時符合以下條件才送、且只送一次：

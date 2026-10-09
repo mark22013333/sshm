@@ -184,7 +184,7 @@ func TunnelPlan(h store.Host, t store.Tunnel, scriptPath string) (Plan, error) {
 }
 
 // TunnelCloseDelay 是 tunnel 結束後保留分頁的秒數；測試可縮短。
-var TunnelCloseDelay = 10
+var TunnelCloseDelay = 3
 
 // tunnelEpilogue 接在 Orca 分頁的指令後：ssh 結束時印出結束碼、等幾秒讓使用者看錯誤，再關閉分頁，
 // 分頁消失後 sshm 的燈號就會回到「已停止」。

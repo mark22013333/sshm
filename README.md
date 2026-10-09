@@ -51,7 +51,7 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 - 狀態以 handle 對照 `orca terminal list` 判斷（不看分頁標題），進入 Tunnel 頁時與之後每 3 秒刷新一次；handle 已不存在就視為已停止並清掉紀錄。停止是 `orca terminal close`。不做自動重連。
 - ◌（無法確認）出現在：第一次查詢還沒回來、Orca 沒回應、清單不完整（被截斷、有主機沒查到、有分頁正在重連）、或正在啟動中。◌ 時按 Enter 不會啟動，避免同一條 tunnel 開出兩個分頁；有執行紀錄（● 或 ◌，含不在 Orca 中）時也不能刪除。
 - 兩個 sshm 同時按啟動時，只有先記錄的那個會開分頁，另一個會提示已有執行紀錄。
-- ssh 結束（斷線、轉送失敗或按 Ctrl+C）時，分頁會顯示「Tunnel 已結束（代碼 N），10 秒後關閉此分頁」，10 秒後自動關閉，燈號隨之回到 ○。tunnel 不共用 ssh 的 ControlMaster 連線。
+- ssh 結束（斷線、轉送失敗或按 Ctrl+C）時，分頁會顯示「Tunnel 已結束（代碼 N），3 秒後關閉此分頁」，3 秒後自動關閉，燈號隨之回到 ○。tunnel 不共用 ssh 的 ControlMaster 連線。
 - 不在 Orca 中執行時 Tunnel 頁唯讀（不能啟動／停止），但仍可新增、編輯、刪除設定。
 - 表單：名稱、機器（輸入文字搜尋、↑↓ 選擇、Enter 確定）、規則（type 用 ←→ 切換 L／R／D；bindAddress 選填；bindPort 必填；L／R 另需 targetHost、targetPort）。Ctrl+A 新增規則、Ctrl+D 刪除游標所在的規則、Ctrl+S 儲存。IPv6 位址直接填（例 `::1`），sshm 會自動加中括號。
 - 刪除機器時，若有 tunnel 引用它，確認訊息會列出這些 tunnel；刪除後 tunnel 設定保留，但啟動時會顯示「機器已不存在」，請編輯改指另一台機器。這種 tunnel 在 `sshm export` 時不會匯出，結果會列出名稱。
