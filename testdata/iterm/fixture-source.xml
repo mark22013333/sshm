@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 合成的 iTerm2 設定（密碼皆為假資料）；以 plutil -convert binary1 轉成 iterm2-fixture.plist -->
+<plist version="1.0">
+<dict>
+	<key>NoSyncLastUpdate</key>
+	<date>2026-10-09T00:00:00Z</date>
+	<key>SomeBinaryBlob</key>
+	<data>AAECAwQ=</data>
+	<key>New Bookmarks</key>
+	<array>
+		<dict>
+			<key>Name</key><string>Default</string>
+			<key>Guid</key><string>g-default</string>
+			<key>Initial Text</key><string></string>
+		</dict>
+		<dict>
+			<key>Name</key><string>SSH 直連</string>
+			<key>Initial Text</key><string>ssh ops@10.3.3.3</string>
+			<key>Tags</key><array><string>其他</string></array>
+		</dict>
+		<dict>
+			<key>Name</key><string>範例-PROD</string>
+			<key>Initial Text</key><string>~/login.exp 22 helpdesk 10.0.0.24 Pa55word</string>
+			<key>Tags</key><array><string>範例客戶-ACME</string></array>
+		</dict>
+		<dict>
+			<key>Name</key><string>台北-DB</string>
+			<key>Initial Text</key><string>expect /Users/someone/login.exp 2222 dba 10.1.1.5 'p w$d"x'</string>
+			<key>Tags</key><array><string>台北市</string><string>DB</string></array>
+		</dict>
+		<dict>
+			<key>Name</key><string>無群組機</string>
+			<key>Initial Text</key><string>/Users/someone/login.exp 22 root 192.168.1.10 simple</string>
+		</dict>
+		<dict>
+			<key>Name</key><string>特殊密碼</string>
+			<key>Initial Text</key><string>~/login.exp 22 ops 10.2.2.2 "it's a [secret] \$HOME"</string>
+			<key>Tags</key><array><string>範例客戶-ACME</string></array>
+		</dict>
+		<dict>
+			<key>Name</key><string>壞的-少參數</string>
+			<key>Initial Text</key><string>~/login.exp 22 root 10.0.0.9</string>
+		</dict>
+		<dict>
+			<key>Name</key><string>壞的-port</string>
+			<key>Initial Text</key><string>~/login.exp abc root 10.0.0.8 pw</string>
+		</dict>
+		<dict>
+			<key>Name</key><string>壞的-dash</string>
+			<key>Initial Text</key><string>~/login.exp 22 -oProxyCommand=x 10.0.0.7 pw</string>
+		</dict>
+		<dict>
+			<key>Name</key><string>範例-PROD 副本</string>
+			<key>Initial Text</key><string>~/login.exp 22 helpdesk 10.0.0.24 Pa55word</string>
+			<key>Tags</key><array><string>範例客戶-ACME</string></array>
+		</dict>
+		<dict>
+			<key>Name</key><string>既有機</string>
+			<key>Initial Text</key><string>~/login.exp 22 tester 10.9.9.9 pw</string>
+		</dict>
+	</array>
+</dict>
+</plist>

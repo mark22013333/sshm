@@ -62,3 +62,52 @@ func hasControl(s string) bool {
 	}
 	return false
 }
+
+// Printable 把控制字元換成「?」，供顯示使用者或外部檔案提供的字串，避免終端機控制序列注入。
+func Printable(s string) string {
+	if !hasControl(s) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			b.WriteRune('?')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// ValidateTunnel 檢查 tunnel 名稱與規則：type 只能 L／R／D、port 1–65535、L／R 必須有 target。
+func ValidateTunnel(t Tunnel) error {
+	if hasControl(t.Name) || hasControl(t.HostID) {
+		return errors.New("名稱或 hostId 不可包含控制字元")
+	}
+	if t.HostID == "" {
+		return errors.New("缺少 hostId")
+	}
+	if len(t.Rules) == 0 {
+		return errors.New("沒有任何規則")
+	}
+	validPort := func(p int) bool { return p >= 1 && p <= 65535 }
+	for i, r := range t.Rules {
+		n := i + 1
+		if hasControl(r.BindAddress) || hasControl(r.TargetHost) || strings.HasPrefix(r.TargetHost, "-") || strings.HasPrefix(r.BindAddress, "-") {
+			return fmt.Errorf("第 %d 條規則的位址不合法", n)
+		}
+		if !validPort(r.BindPort) {
+			return fmt.Errorf("第 %d 條規則的 bindPort 必須是 1–65535", n)
+		}
+		switch r.Type {
+		case "D":
+		case "L", "R":
+			if r.TargetHost == "" || !validPort(r.TargetPort) {
+				return fmt.Errorf("第 %d 條規則（%s）需要 targetHost 與 1–65535 的 targetPort", n, r.Type)
+			}
+		default:
+			return fmt.Errorf("第 %d 條規則的 type 只能是 L、R、D", n)
+		}
+	}
+	return nil
+}

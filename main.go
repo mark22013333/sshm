@@ -22,9 +22,11 @@ const usage = `用法：
   sshm -- <搜尋字>     搜尋字與子指令同名時使用（例：sshm -- add）
   sshm add             直接開「新增機器」表單
   sshm zsh-widget      印出 Ctrl+O 的 zsh widget 設定（請自行貼進 ~/.zshrc）
-  sshm import-iterm    從 iTerm2 匯入（尚未實作）
-  sshm export [--with-passwords] <檔案>   匯出 JSON（尚未實作）
-  sshm import <檔案>   匯入 JSON（尚未實作）
+  sshm import-iterm [--plist <路徑>]
+                       從 iTerm2 匯入以 login.exp 登入的 profile（先預覽再寫入）
+  sshm export [--with-passwords] [--force] <檔案>
+                       匯出 JSON（預設不含密碼；目的檔已存在時需 --force）
+  sshm import <檔案>   匯入 JSON（同 id 且內容不同的項目先列出差異再確認）
 `
 
 func main() {
@@ -33,8 +35,9 @@ func main() {
 
 // command 是解析命令列後的結果。
 type command struct {
-	name  string // tui、add、help、zsh-widget，或尚未實作的子指令名稱
+	name  string // tui、add、help、zsh-widget、import-iterm、export、import
 	query string
+	args  []string // 子指令後的參數
 }
 
 func parseArgs(args []string) command {
@@ -48,7 +51,7 @@ func parseArgs(args []string) command {
 	case "-h", "--help", "help":
 		return command{name: "help"}
 	case "zsh-widget", "add", "import-iterm", "export", "import":
-		return command{name: args[0]}
+		return command{name: args[0], args: args[1:]}
 	}
 	return command{name: "tui", query: strings.Join(args, " ")}
 }
@@ -62,9 +65,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "zsh-widget":
 		fmt.Fprint(stdout, zshwidget.Script)
 		return 0
-	case "import-iterm", "export", "import":
-		fmt.Fprintf(stderr, "sshm %s：尚未實作\n", cmd.name)
-		return 1
+	case "import-iterm":
+		return report(stderr, runImportITerm(cmd.args, stdout))
+	case "export":
+		return report(stderr, runExport(cmd.args, stdout))
+	case "import":
+		return report(stderr, runImport(cmd.args, os.Stdin, stdout))
 	}
 	if err := runTUI(cmd.query, cmd.name == "add"); err != nil {
 		fmt.Fprintln(stderr, "sshm：", err)

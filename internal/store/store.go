@@ -105,7 +105,11 @@ func load(path string) (*File, error) {
 			return nil, fmt.Errorf("收緊 %s 權限失敗：%w", path, err)
 		}
 	}
-	return Parse(data)
+	f, err := Parse(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s %w", path, err)
+	}
+	return f, nil
 }
 
 // Open 讀取 path；檔案不存在時建立空檔（目錄 0700、檔案 0600）。
@@ -155,7 +159,7 @@ func Parse(data []byte) (*File, error) {
 		return f, nil
 	}
 	if err := json.Unmarshal(data, f); err != nil {
-		return nil, fmt.Errorf("hosts.json 格式錯誤：%w", err)
+		return nil, fmt.Errorf("JSON 格式錯誤：%w", err)
 	}
 	if f.Version == 0 {
 		f.Version = CurrentVersion

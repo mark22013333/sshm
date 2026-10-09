@@ -131,14 +131,26 @@ Tunnel 頁：
 
 ## 6. 匯出／匯入
 
-JSON 格式同第 3 節。匯出預設把每台的 `password` 清空，`--with-passwords` 才保留。匯入時同 id 的項目先列出差異再確認。
+JSON 格式同第 3 節。
+
+匯出（`sshm export [--with-passwords] [--force] <檔案>`）：
+- 預設把每台的 `password` 清空，`--with-passwords` 才保留。輸出檔權限 0600。
+- 目的檔已存在時須 `--force`；目的檔是 symlink、或與 hosts.json 是同一檔（`os.SameFile`，含硬連結）一律拒絕。
+
+匯入（`sshm import <檔案>`）：
+- 整份先驗證，任一項不合法就整份不匯入：機器（同第 3 節驗證）、檔內 id 重複、tunnel（type 僅 L/R/D、port 1–65535、L/R 必填 target、hostId 必須存在於匯入後資料）。
+- 同 id 有差異時列出差異再問：`y` 覆蓋、`n` 只匯入新項目、其他鍵或 EOF 取消；無差異直接寫入。差異清單不顯示密碼、extraArgs、customCommand 的內容，只顯示「已變更」。
+- 匯入檔密碼為空時，只有 host、port、user 三者都未變才沿用現有密碼；任一有變則清空，並在差異清單標明「密碼將沿用／將清空」，完成後列出需補密碼的機器。
+- 群組依名稱比對、tunnel 依 id 比對；選 `n` 時不建立被略過機器的群組。
 
 ## 7. 從 iTerm2 匯入
 
 - 讀法：`plutil -extract "New Bookmarks" json -o - ~/Library/Preferences/com.googlecode.iterm2.plist`（整份 plist 無法轉 JSON，必須只取這一段）。
-- 只處理 `Initial Text` 含 `login.exp` 的 profile；以 shell 規則拆分，`login.exp` 之後 4 個參數依序為 port、user、host、password。
+- 只處理 `Initial Text` 含 `login.exp` 的 profile（`--plist` 可指定其他 plist）；去掉結尾空白後以 POSIX sh 規則自行拆分（不用 shlex）：單引號內全為字面值；雙引號內只有 `\` 接 `` $ ` " \ `` 換行才是跳脫；引號外 `\` 跳脫下一字元；`;` 結束指令。`login.exp` 之後 4 個參數依序為 port、user、host、password。
+- 遇到會被 shell 展開而無法確定結果的寫法——未加單引號的 `$`、反引號、`$'…'`、未加引號的開頭 `~` 與 `* ? [`、未閉合引號——一律標「無法匯入」，不猜測密碼。所有「無法匯入」的原因都不顯示原始值。
+- 非 login.exp 的 profile 只顯示略過數量。
 - 名稱取 profile 的 `Name`；群組取 `Tags`：單一 tag 直接用；多個 tag 在預覽畫面逐台挑選，預設第一個。
-- 預覽畫面：列出全部候選，可逐台勾選（預設全選）；已存在同 host+port+user 的標為「重複」預設不勾。
+- 預覽畫面：列出全部候選，可逐台勾選（預設全選）；已存在同 host+port+user 的標為「重複」、同批 profile 互相重複的後者標「與本批另一個 profile 重複」，兩者預設不勾但可手動勾選。Tags 格式不符時顯示提示。顯示字串過濾控制字元。一台都沒勾時不寫檔。
 - 處理過程中含密碼的資料只存在記憶體，不得寫入暫存檔。
 
 ## 8. 原型驗證紀錄（2026-10-09）
