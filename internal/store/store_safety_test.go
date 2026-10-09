@@ -45,6 +45,14 @@ func TestValidateHost(t *testing.T) {
 		{"key 缺金鑰檔", with(func(h *Host) { h.Auth = AuthKey }), "金鑰檔"},
 		{"key 有金鑰檔", with(func(h *Host) { h.Auth = AuthKey; h.IdentityFile = "~/.ssh/id" }), ""},
 		{"未知 auth", with(func(h *Host) { h.Auth = "otp" }), "不支援"},
+		{"host 含 @", with(func(h *Host) { h.Host = "victim@attacker" }), "host 不可包含 @"},
+		{"host 含空白", with(func(h *Host) { h.Host = "a b" }), "host 不可包含"},
+		{"host 含 tab", with(func(h *Host) { h.Host = "a\tb" }), "控制字元"},
+		{"host 含 /", with(func(h *Host) { h.Host = "a/b" }), "host 不可包含"},
+		{"user 含 @", with(func(h *Host) { h.User = "root@x" }), "user 不可包含"},
+		{"user 含 :", with(func(h *Host) { h.User = "root:x" }), "user 不可包含"},
+		{"user 含空白", with(func(h *Host) { h.User = "a b" }), "user 不可包含"},
+		{"IPv6 與點號主機名稱可用", with(func(h *Host) { h.Host = "fe80::1" }), ""},
 	}
 	for _, c := range cases {
 		err := ValidateHost(c.host)

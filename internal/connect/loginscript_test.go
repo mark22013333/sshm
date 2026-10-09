@@ -421,3 +421,26 @@ func TestLoginScriptInvalidWindowEnv(t *testing.T) {
 		})
 	}
 }
+
+// 帳號大小寫必須逐字相符，主機名稱不分大小寫。
+func TestLoginScriptUserCaseSensitive(t *testing.T) {
+	cases := []struct{ name, prompt, want string }{
+		{"帳號大小寫不同不送", "admin@host's password: ", "manual]"},
+		{"主機大小寫不同仍送", "Admin@HOST's password: ", "SECRET]"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := scenHost
+			h.User = "Admin"
+			r := startLogin(t, "../../testdata/rv-scen", h, "SCEN=custom", "PROMPT="+c.prompt)
+			r.waitText(c.prompt)
+			if c.want == "manual]" {
+				time.Sleep(1200 * time.Millisecond)
+				r.send("manual\n")
+			}
+			if got := r.waitFor("PW=["); got != c.want {
+				t.Fatalf("got %q，want %q", got, c.want)
+			}
+		})
+	}
+}

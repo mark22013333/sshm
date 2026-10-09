@@ -65,7 +65,7 @@ sshm import backup.json                     # 匯入
 
 密碼登入由內嵌的 expect 腳本處理，只在「登入階段」對「這次要連的機器」自動送一次密碼：
 
-- 提示必須指名這次的 user 與 host，支援 OpenSSH 的三種格式：`user@host's password:`、`(user@host) Password:`、`Password for user@host:`（不分大小寫，後面可接空白或色碼）。只有 `Password:` 而沒有 user@host 的提示一律不送。
+- 提示必須指名這次的 user 與 host（帳號大小寫要相符，主機名稱不分大小寫），支援 OpenSSH 的三種格式：`user@host's password:`、`(user@host) Password:`、`Password for user@host:`（不分大小寫，後面可接空白或色碼）。只有 `Password:` 而沒有 user@host 的提示一律不送。
 - 跳板機（ProxyJump／ProxyCommand）的提示指名的是跳板機，不會送出；請自己輸入跳板機密碼，之後目標機的提示仍會自動送。
 - 連線後 20 秒內、你還沒自己打字之前才會送。提示出現後要等輸出靜止 0.8 秒、確認仍停在提示上才送，這段期間你一按鍵就不送。
 - 送過一次、超過 20 秒、或你已經開始自己打字之後，就不再比對，所以 `su`、`sudo`、`mysql -p`、從遠端再 ssh 到第三台時的密碼提示都不會被自動填入。密碼錯誤時的第二次提示也不會重送。
@@ -73,6 +73,7 @@ sshm import backup.json                     # 匯入
 
 ## 已知限制
 
+- **金鑰已登入後仍可能送出密碼（機率極低）**：若已用金鑰登入，而遠端在登入時窗（20 秒）內、你按任何鍵之前，印出指名本次 user@host 的密碼提示，sshm 仍會送出密碼。
 - **密碼以明碼保存**：存在 hosts.json 裡，並以參數傳給 expect 腳本，連線期間同一使用者可用 `ps` 看到。
 - **在 Orca 開新分頁時，密碼會出現在畫面上**：連線指令（含密碼）是打進新分頁 shell 的文字，會顯示在新分頁畫面與 scrollback 裡。
 - **沒開 zsh 的 `HIST_IGNORE_SPACE` 時，連線指令（含密碼）會寫進 shell history**；分頁若是 bash，要另外設定 `HISTCONTROL=ignorespace`。

@@ -37,7 +37,7 @@ zsh widget 行為：在提示列按 Ctrl+O 開 sshm；提示列上已輸入的�
 連線前（組指令前）重新跑一次驗證，hosts.json 被手改出不合法內容時拒絕連線並顯示原因。
 所有文字欄位（含密碼）拒絕 C0 控制字元與 DEL。
 密碼以明碼存於此檔（使用者決策）。
-驗證：`user`、`host` 不得以 `-` 開頭；`auth=key` 時 `identityFile` 必填；`auth` 改成非 `password` 時清除 `password`。
+驗證：`user`、`host` 不得以 `-` 開頭；`host` 不得含 `@`、空白、`/`，`user` 不得含 `@`、`:`、空白（2026-10-09 Codex 交叉審查：host 含 `@` 會讓 ssh 連到 `@` 後的主機，而提示仍符合比對規則）；`auth=key` 時 `identityFile` 必填；`auth` 改成非 `password` 時清除 `password`。
 
 ```json
 {
@@ -95,7 +95,7 @@ expect 腳本：程式內嵌 `assets/sshm-login.exp`，啟動時若資料目錄�
 - spawn 後 20 秒內（`SSHM_LOGIN_WINDOW` 可調）；
 - 使用者尚未按過任何鍵（一按鍵就停止自動送，避免 su／mysql -p／再 ssh 到第三台的提示被填入）；
 - 輸出靜止 0.8 秒後，緩衝區仍以密碼提示結尾（不分大小寫，容許尾隨空白與 ANSI 色碼），避免 MOTD 分段輸出時誤送；確認期間同時監看使用者輸入，一有按鍵就放棄；
-- 提示必須指名**本次目標**：`<user>@<host>'s password:`、`(<user>@<host>) Password:`、`Password for <user>@<host>:` 三種格式之一，user／host 以字串比對（不當 regex）。不含 user@host 的 `Password:`、或指名其他主機的提示（例如 ProxyJump 的跳板機）一律不送、也不消耗「只送一次」的額度。
+- 提示必須指名**本次目標**：`<user>@<host>'s password:`、`(<user>@<host>) Password:`、`Password for <user>@<host>:` 三種格式之一，user／host 以字串比對（不當 regex）：主機名稱不分大小寫，帳號必須逐字相符。不含 user@host 的 `Password:`、或指名其他主機的提示（例如 ProxyJump 的跳板機）一律不送、也不消耗「只送一次」的額度。
 - 例外：出現非目標提示後，使用者回答它（到按下 Enter 為止）的按鍵不算「按過鍵」，以便跳板機手動輸入後，目標機仍能自動送。
 - `~/.ssh/config` 的 `HostName` 改寫主機名稱時，提示中的 host 與 sshm 記錄的不同，會退化成手動輸入（不會誤送）。
 - `SSHM_LOGIN_WINDOW` 必須是整數，否則用預設 20。

@@ -202,3 +202,10 @@ func TestTagsAndDuplicateNotes(t *testing.T) {
 		t.Errorf("selected = %d", CountSelected(p.Candidates))
 	}
 }
+
+func TestBuildRejectsAtInHost(t *testing.T) {
+	p := Build([]Bookmark{{Name: "x", InitialText: "~/login.exp 22 root victim@attacker pw"}}, store.NewFile())
+	if c := p.Candidates[0]; c.Status != StatusInvalid || !strings.Contains(c.Reason, "host 不可包含 @") {
+		t.Fatalf("%+v", c)
+	}
+}

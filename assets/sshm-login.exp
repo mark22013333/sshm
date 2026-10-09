@@ -20,16 +20,21 @@ spawn ssh -o StrictHostKeyChecking=accept-new -p $port {*}$extra -- $username@$h
 set start [clock seconds]
 
 # 提示行是否指名本次目標（OpenSSH 三種格式）；以字串比對，user、host 不當 regex。
-proc is_target_prompt {line} {
+# 主機名稱不分大小寫，帳號必須逐字相符。
+proc is_target_prompt {orig} {
     global username hostname
-    set line [string tolower $line]
+    set line [string tolower $orig]
     set uh [string tolower "$username@$hostname"]
-    foreach needle [list "$uh's password:" "($uh) password:" "password for $uh:"] {
+    set ulen [string length $username]
+    # 每種格式：比對字串，以及 user 在比對字串中的起始位置
+    foreach {needle uoff} [list "$uh's password:" 0 "($uh) password:" 1 "password for $uh:" 13] {
         set idx [string first $needle $line]
         while {$idx >= 0} {
             # user@host 前面不能緊接主機名稱字元，避免 jumpuser@ 被當成 user@
             set before [expr {$idx > 0 ? [string index $line [expr {$idx - 1}]] : ""}]
-            if {[string index $needle 0] eq "(" || [string index $needle 0] eq "p" || ![string match {[a-z0-9._-]} $before]} {
+            set ustart [expr {$idx + $uoff}]
+            set userOK [expr {[string range $orig $ustart [expr {$ustart + $ulen - 1}]] eq $username}]
+            if {$userOK && ($uoff > 0 || ![string match {[a-z0-9._-]} $before])} {
                 return 1
             }
             set idx [string first $needle $line [expr {$idx + 1}]]

@@ -90,10 +90,13 @@ func TestHostPlan(t *testing.T) {
 			wantArgv: []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "--", "helpdesk@10.0.0.24"},
 		},
 		{
-			name:     "名稱含空白的 user",
-			host:     with(func(h *store.Host) { h.Auth = "none"; h.User = "a b" }),
-			wantText: " ssh -o StrictHostKeyChecking=accept-new -p 2222 -- 'a b@10.0.0.24'",
+			name:     "名稱含空白與引號（quoting）",
+			host:     with(func(h *store.Host) { h.Auth = "none"; h.Name = "a b"; h.User = "o'neil" }),
+			wantText: ` ssh -o StrictHostKeyChecking=accept-new -p 2222 -- 'o'\''neil@10.0.0.24'`,
 		},
+		{name: "host 含 @（實際會連到 @ 後的主機）", host: with(func(h *store.Host) { h.Auth = "password"; h.Host = "victim@attacker" }), wantErr: "host 不可包含 @"},
+		{name: "user 含 @", host: with(func(h *store.Host) { h.User = "root@evil" }), wantErr: "user 不可包含 @"},
+		{name: "user 含空白", host: with(func(h *store.Host) { h.User = "a b" }), wantErr: "user 不可包含"},
 		{
 			name: "customCommand 整個取代",
 			host: with(func(h *store.Host) {

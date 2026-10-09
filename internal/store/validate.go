@@ -37,6 +37,13 @@ func ValidateHost(h Host) error {
 	if strings.HasPrefix(h.Host, "-") {
 		return errors.New("host 不可以 - 開頭")
 	}
+	// user@host 會整串交給 ssh：host 含 @ 時 ssh 以最後一個 @ 之後為主機，密碼可能被送到別台
+	if strings.ContainsAny(h.Host, "@/ \t") {
+		return errors.New("host 不可包含 @、/ 或空白")
+	}
+	if strings.ContainsAny(h.User, "@: \t") {
+		return errors.New("user 不可包含 @、: 或空白")
+	}
 	// 0 代表未設定，連線時用 22
 	if h.Port < 0 || h.Port > 65535 {
 		return errors.New("port 必須是 1–65535 的數字")

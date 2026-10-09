@@ -337,3 +337,12 @@ func TestImportDiffHidesExtraArgsAndCustomCommand(t *testing.T) {
 		t.Fatalf("輸出：\n%s", text)
 	}
 }
+
+func TestImportRejectsAtInHost(t *testing.T) {
+	path, dir := seed(t)
+	src := writeJSON(t, dir, `{"version":1,"hosts":[{"id":"h_q","name":"q","host":"victim@attacker","user":"root","auth":"none"}]}`)
+	var out bytes.Buffer
+	if err := RunImport(path, src, strings.NewReader("y\n"), &out); err == nil || !strings.Contains(err.Error(), "host 不可包含 @") {
+		t.Fatalf("err = %v", err)
+	}
+}
