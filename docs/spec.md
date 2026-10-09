@@ -124,7 +124,7 @@ Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值�
 
 Tunnel 頁：
 - 每條 tunnel 一列：狀態燈（● 執行中／○ 已停止）、名稱、機器名稱、規則摘要（例 `L 13306→127.0.0.1:3306`）。
-- 鍵：Enter 啟動／停止、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+x` 刪除。
+- 鍵：Enter 啟動／停止、`ctrl+g` 前往該 tunnel 的 Orca 分頁（`orca terminal switch`）、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+x` 刪除。
 - 啟動 = 開 Orca 專用分頁（標題 `⇄ <名稱>`，不加 `--focus`），先在 state 鎖內佔位（已有紀錄就拒絕，防兩個實例重複啟動），取得 handle 後寫入 `~/.config/sshm/state.json`（0600、原子寫入，每筆含 startedAt）；開分頁失敗或佔位超過 1 分鐘仍無 handle 則清除佔位。
 - 狀態 = 以 handle 查 `orca terminal list --json --limit=1000` 的 `result.terminals[].handle` 是否存在（**不可用 title 判斷**，shell 會改寫 title）；進頁與每 3 秒刷新，上一次查詢未回時跳過、較舊的查詢結果丟棄。燈號：● 執行中、○ 已停止、◌ 無法確認——首次查詢回來前有紀錄者、查詢失敗、清單不完整（依 Orca hostScopeCensusIsComplete：截斷、缺 hostScope、略過非 runtime: 主機）、或該分頁正在重連時。◌ 時 Enter 不啟動、不清紀錄；只清「查詢開始前啟動」且確定不存在的紀錄。
 - 停止 = `orca terminal close --terminal <handle>`。不在 Orca 中時 tunnel 頁唯讀並提示（仍可新增／編輯／刪除設定）。

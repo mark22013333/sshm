@@ -176,3 +176,57 @@ func TestTunnelReconnectingIsUnknown(t *testing.T) {
 	}
 	_ = tea.Quit
 }
+
+// Ctrl+G：有 handle 時呼叫 orca terminal switch，sshm 保持開啟。
+func TestTunnelGotoTab(t *testing.T) {
+	m, fo, sp := setupTunnels(t, true)
+	seedRunning(t, sp, fo, "term_old")
+	drain(t, m, send(t, m, "tab"))
+	cmd := send(t, m, "ctrl+g")
+	drain(t, m, cmd)
+	sw := fo.callsOf("switch")
+	if len(sw) != 1 || strings.Join(sw[0], " ") != "/orca/orca terminal switch --terminal=term_old --json" {
+		t.Fatalf("switch = %q", sw)
+	}
+	if !strings.Contains(m.status, "已切到「db」分頁") || m.statusErr {
+		t.Fatalf("status = %q", m.status)
+	}
+	if !strings.Contains(m.View(), "Ctrl+G 前往分頁") {
+		t.Fatal("說明列缺 Ctrl+G")
+	}
+}
+
+func TestTunnelGotoTabWithoutRecord(t *testing.T) {
+	m, fo, _ := setupTunnels(t, true)
+	drain(t, m, send(t, m, "tab"))
+	drain(t, m, send(t, m, "ctrl+g"))
+	if len(fo.callsOf("switch")) != 0 || !strings.Contains(m.status, "這條 tunnel 沒有在執行") {
+		t.Fatalf("status=%q calls=%v", m.status, fo.calls)
+	}
+}
+
+func TestTunnelGotoTabOrcaError(t *testing.T) {
+	m, fo, sp := setupTunnels(t, true)
+	seedRunning(t, sp, fo, "term_old")
+	m.opts.Runner = func(ctx context.Context, argv []string) ([]byte, []byte, error) {
+		if argv[2] == "switch" {
+			return []byte(`{"ok":false,"error":{"message":"terminal not found"}}`), nil, errors.New("exit 1")
+		}
+		return fo.run(ctx, argv)
+	}
+	drain(t, m, send(t, m, "tab"))
+	drain(t, m, send(t, m, "ctrl+g"))
+	if !m.statusErr || !strings.Contains(m.status, "terminal not found") {
+		t.Fatalf("status = %q", m.status)
+	}
+}
+
+func TestTunnelGotoTabOutsideOrca(t *testing.T) {
+	m, fo, sp := setupTunnels(t, false)
+	seedRunning(t, sp, fo, "term_old")
+	drain(t, m, send(t, m, "tab"))
+	drain(t, m, send(t, m, "ctrl+g"))
+	if len(fo.calls) != 0 || !strings.Contains(m.status, "需要在 Orca 中執行") {
+		t.Fatalf("status=%q calls=%v", m.status, fo.calls)
+	}
+}

@@ -199,6 +199,8 @@ func (m *Model) updateTunnelList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.openTunnelForm(store.Tunnel{}, false)
+	case "ctrl+g":
+		return m.gotoTunnelTab()
 	case "ctrl+e":
 		if t, ok := m.currentTunnel(); ok {
 			return m, m.openTunnelForm(t, true)
@@ -217,6 +219,34 @@ func (m *Model) updateTunnelList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.deleteID = modeConfirmTunnelDelete, t.ID
 	}
 	return m, nil
+}
+
+// gotoTunnelTab 讓 Orca 切到該 tunnel 的分頁；◌ 時仍嘗試，失敗就顯示 Orca 的錯誤。
+func (m *Model) gotoTunnelTab() (tea.Model, tea.Cmd) {
+	t, ok := m.currentTunnel()
+	if !ok {
+		return m, nil
+	}
+	if !m.opts.InOrca {
+		m.setStatus("需要在 Orca 中執行", true)
+		return m, nil
+	}
+	m.loadTunnelState()
+	var handle string
+	if m.tState != nil {
+		handle = m.tState.Tunnels[t.ID].Handle
+	}
+	if handle == "" {
+		m.setStatus("這條 tunnel 沒有在執行", true)
+		return m, nil
+	}
+	orca, run, name := m.opts.Orca, m.opts.Runner, store.Printable(t.Name)
+	return m, func() tea.Msg {
+		if err := orca.SwitchTerminal(run, handle); err != nil {
+			return tunnelActionMsg{err: err}
+		}
+		return tunnelActionMsg{note: "已切到「" + name + "」分頁"}
+	}
 }
 
 // toggleTunnel 執行中就停止，否則啟動。
@@ -439,6 +469,6 @@ func (m *Model) tunnelPageView() string {
 	case m.status != "":
 		b.WriteString(styleInfo.Render(m.status) + "\n")
 	}
-	b.WriteString(styleHelp.Render("● 執行中 ○ 已停止 ◌ 無法確認 · Enter 啟動／停止 · Ctrl+N 新增 · Ctrl+E 編輯 · Ctrl+X 刪除 · Tab 切頁 · Esc 離開"))
+	b.WriteString(styleHelp.Render("● 執行中 ○ 已停止 ◌ 無法確認 · Enter 啟動／停止 · Ctrl+G 前往分頁 · Ctrl+N 新增 · Ctrl+E 編輯 · Ctrl+X 刪除 · Tab 切頁 · Esc 離開"))
 	return b.String()
 }

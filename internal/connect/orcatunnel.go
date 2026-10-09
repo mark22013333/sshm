@@ -153,9 +153,24 @@ func (o OrcaEnv) CloseArgv(handle string) []string {
 
 // CloseTerminal 關閉指定 terminal。
 func (o OrcaEnv) CloseTerminal(run Runner, handle string) error {
+	return runTerminalAction(run, o.CloseArgv(handle), "orca terminal close")
+}
+
+// SwitchArgv 組 `orca terminal switch --terminal <handle>` 的 argv。
+func (o OrcaEnv) SwitchArgv(handle string) []string {
+	return []string{filepath.Join(o.BinDir, "orca"), "terminal", "switch", "--terminal=" + handle, "--json"}
+}
+
+// SwitchTerminal 讓 Orca 切到指定 terminal 所在的分頁。
+func (o OrcaEnv) SwitchTerminal(run Runner, handle string) error {
+	return runTerminalAction(run, o.SwitchArgv(handle), "orca terminal switch")
+}
+
+// runTerminalAction 執行只需要成敗的 orca 指令；JSON 只從 stdout 解析，失敗訊息優先取 Orca 的 error.message。
+func runTerminalAction(run Runner, argv []string, label string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	out, stderr, err := run(ctx, o.CloseArgv(handle))
+	out, stderr, err := run(ctx, argv)
 	var resp struct {
 		OK    *bool `json:"ok"`
 		Error struct {
@@ -171,7 +186,7 @@ func (o OrcaEnv) CloseTerminal(run Runner, handle string) error {
 		if msg == "" && err != nil {
 			msg = err.Error()
 		}
-		return errors.New("orca terminal close 失敗：" + msg)
+		return errors.New(label + " 失敗：" + msg)
 	}
 	return nil
 }

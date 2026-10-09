@@ -99,3 +99,17 @@ func TestListTerminalsCompleteness(t *testing.T) {
 		t.Fatalf("重連中的 handle 應存在但標為未連線：%v", set.Handles)
 	}
 }
+
+func TestSwitchTerminal(t *testing.T) {
+	o := OrcaEnv{BinDir: "/b"}
+	var argv []string
+	if err := o.SwitchTerminal(fakeRun(`{"ok":true,"result":{}}`, "warn", nil, &argv), "term_1"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(argv, []string{"/b/orca", "terminal", "switch", "--terminal=term_1", "--json"}) {
+		t.Fatalf("argv = %q", argv)
+	}
+	if err := o.SwitchTerminal(fakeRun("", "no such terminal", errors.New("exit status 1"), nil), "x"); err == nil || !strings.Contains(err.Error(), "no such terminal") {
+		t.Fatalf("err = %v", err)
+	}
+}

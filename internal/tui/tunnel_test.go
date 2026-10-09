@@ -41,6 +41,8 @@ func (o *fakeOrca) run(_ context.Context, argv []string) ([]byte, []byte, error)
 		data, _ := json.Marshal(map[string]any{"ok": true, "result": map[string]any{"terminals": ts, "truncated": o.truncated,
 			"hostScope": map[string]any{"hostIds": []string{"local"}, "omittedHostIds": []string{}}}})
 		return data, nil, nil
+	case "switch":
+		return []byte(`{"ok":true,"result":{}}`), nil, nil
 	case "close":
 		delete(o.live, strings.TrimPrefix(argv[3], "--terminal="))
 		return []byte(`{"ok":true,"result":{}}`), nil, nil
