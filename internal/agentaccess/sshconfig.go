@@ -3,15 +3,19 @@ package agentaccess
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mark22013333/sshm/internal/store"
 )
@@ -67,18 +71,83 @@ func quoteConfValue(s string) string {
 	return s
 }
 
-// confHost 判斷機器能否安全寫成別名區塊；% 會被 ssh 當成 token 展開，一律不收。
-func confHost(h store.Host) error {
-	if h.Agent == nil {
-		return errors.New("未開通")
+// ValidConfHost 以白名單檢查要寫進 ssh 設定的 HostName：主機名稱（英數 . _ -）、IPv4，或不加中括號的 IPv6。
+// 引號、空白、#、$、%、反斜線等會讓 ssh 解析失敗或改變語意（Include 在 ~/.ssh/config 最上方，壞掉會連帶讓所有 ssh 失效）。
+func ValidConfHost(s string) error {
+	if s == "" || len(s) > 253 || strings.HasPrefix(s, "-") || strings.HasPrefix(s, ".") {
+		return fmt.Errorf("host %q 不能寫進 ssh 設定：必須是主機名稱、IPv4 或 IPv6 位址", store.Printable(s))
 	}
+	if strings.Contains(s, ":") {
+		if ip := net.ParseIP(s); ip == nil || ip.To4() != nil {
+			return fmt.Errorf("host %q 不能寫進 ssh 設定：含 : 時必須是不加中括號的 IPv6 位址", store.Printable(s))
+		}
+		return nil
+	}
+	for _, r := range s {
+		if !isAlnum(r) && r != '.' && r != '-' && r != '_' {
+			return fmt.Errorf("host %q 不能寫進 ssh 設定：只能用英數與 . _ -", store.Printable(s))
+		}
+	}
+	return nil
+}
+
+// ValidConfUser 以白名單檢查要寫進 ssh 設定的 User：POSIX 帳號字元（英數 . _ -，不以 - 開頭），
+// 允許結尾一個 $（Samba 機器帳號）；OpenSSH 會展開 User 中的 ${…}，因此其他位置的 $ 一律不收。
+func ValidConfUser(s string) error {
+	name := strings.TrimSuffix(s, "$")
+	if name == "" || len(s) > 64 || strings.HasPrefix(s, "-") {
+		return fmt.Errorf("帳號 %q 不能寫進 ssh 設定：必須是 POSIX 帳號名稱（英數 . _ -，不以 - 開頭）", store.Printable(s))
+	}
+	for _, r := range name {
+		if !isAlnum(r) && r != '.' && r != '-' && r != '_' {
+			return fmt.Errorf("帳號 %q 不能寫進 ssh 設定：只能用英數與 . _ -", store.Printable(s))
+		}
+	}
+	return nil
+}
+
+func isAlnum(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+}
+
+// safeConfPath 檢查要寫進 ssh 設定的檔案路徑：可含空白（會加雙引號），但不可含引號、反斜線、
+// % 與 ${（ssh 會展開 token 與環境變數）以及控制字元。
+func safeConfPath(path string) error {
+	if !filepath.IsAbs(path) || strings.ContainsAny(path, "\"'\\%") || strings.Contains(path, "${") || store.Printable(path) != path {
+		return fmt.Errorf("路徑 %q 含 ssh 設定無法安全表示的字元（引號、反斜線、%%、${ 或控制字元）", store.Printable(path))
+	}
+	return nil
+}
+
+// ConfProblem 回傳這台已開通機器無法寫成別名區塊的原因；空字串表示可以寫入。
+// 不合法的機器不會寫進 sshm_agents.conf（別名停用），其他機器照常。
+func (p Paths) ConfProblem(h store.Host) string {
+	if h.Agent == nil {
+		return "未開通"
+	}
+	if err := p.confHost(h); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func (p Paths) confHost(h store.Host) error {
 	if err := store.ValidateHost(h); err != nil {
 		return err
 	}
-	if strings.Contains(h.Host, "%") || strings.Contains(h.AgentUser(), "%") {
-		return errors.New("host 或 user 不可包含 %")
+	if err := ValidConfHost(h.Host); err != nil {
+		return err
 	}
-	return nil
+	if err := ValidConfUser(h.AgentUser()); err != nil {
+		return err
+	}
+	if !store.ValidAgentAlias(h.Agent.Alias) {
+		return fmt.Errorf("別名 %q 不合法", store.Printable(h.Agent.Alias))
+	}
+	if filepath.Clean(h.Agent.KeyFile) != p.KeyPath(h.Agent.Alias) {
+		return fmt.Errorf("金鑰路徑 %s 不是 sshm 為別名 %s 產生的 %s", store.Printable(h.Agent.KeyFile), h.Agent.Alias, p.KeyPath(h.Agent.Alias))
+	}
+	return safeConfPath(h.Agent.KeyFile)
 }
 
 func effectivePort(p int) int {
@@ -91,15 +160,15 @@ func effectivePort(p int) int {
 const confHeader = "# 由 sshm 自動產生，請勿手動編輯；請用 sshm agent enable／disable 管理。\n" +
 	"# 已開通給 AI agent 的機器，連線方式：ssh <別名>\n"
 
-// RenderConf 產生 sshm_agents.conf 的內容，依別名排序；資料不合法的機器略過並回報名稱。
-func RenderConf(f *store.File) ([]byte, []string) {
+// RenderConf 產生 sshm_agents.conf 的內容，依別名排序；資料不合法的機器略過（別名停用）並回報名稱與原因。
+func (p Paths) RenderConf(f *store.File) ([]byte, []string) {
 	var hosts []store.Host
 	var skipped []string
 	for _, h := range f.Hosts {
 		if h.Agent == nil {
 			continue
 		}
-		if err := confHost(h); err != nil {
+		if err := p.confHost(h); err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s（%v）", store.Printable(h.Name), err))
 			continue
 		}
@@ -141,10 +210,38 @@ func ensureSSHDir(dir string) error {
 	return os.Chmod(dir, 0o700)
 }
 
-// SyncConf 依 hosts.json 重寫 sshm_agents.conf（原子寫入、保留 symlink）；內容相同不寫。
-// 沒有任何已開通機器且檔案不存在時不建立。回傳是否寫入與被略過的機器。
+// CheckConfFile 以 ssh 實際解析設定檔（ssh -G -F <檔> <別名>），確認每個別名都能被解析；
+// 測試可替換。aliases 為空時只解析一次（用不會匹配的名稱）。
+var CheckConfFile = func(path string, aliases []string) error {
+	if len(aliases) == 0 {
+		aliases = []string{"sshm-config-check"}
+	}
+	for _, a := range aliases {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		out, err := exec.CommandContext(ctx, "ssh", "-G", "-F", path, a).CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("ssh 無法解析新的別名設定（%v）：%s", err, strings.TrimSpace(store.Printable(string(out))))
+		}
+	}
+	return nil
+}
+
+// confAliases 取出 conf 內容中的別名（Host 行）。
+func confAliases(data []byte) []string {
+	var aliases []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if a, ok := strings.CutPrefix(line, "Host "); ok {
+			aliases = append(aliases, a)
+		}
+	}
+	return aliases
+}
+
+// SyncConf 依 hosts.json 重寫 sshm_agents.conf：先寫暫存檔、以 ssh -G 驗證能被解析，才原子取代（保留 symlink）；
+// 驗證失敗時保留舊檔並回報。內容相同不寫；沒有任何已開通機器且檔案不存在時不建立。回傳是否寫入與被略過的機器。
 func (p Paths) SyncConf(f *store.File) (bool, []string, error) {
-	data, skipped := RenderConf(f)
+	data, skipped := p.RenderConf(f)
 	cur, err := os.ReadFile(p.Conf)
 	switch {
 	case err == nil && bytes.Equal(cur, data):
@@ -159,8 +256,9 @@ func (p Paths) SyncConf(f *store.File) (bool, []string, error) {
 	if err := ensureSSHDir(p.SSHDir); err != nil {
 		return false, skipped, err
 	}
-	if err := store.WriteFileAtomic(p.Conf, data, 0o600); err != nil {
-		return false, skipped, err
+	check := func(tmp string) error { return CheckConfFile(tmp, confAliases(data)) }
+	if err := store.WriteFileAtomicChecked(p.Conf, data, 0o600, check); err != nil {
+		return false, skipped, fmt.Errorf("未更新 %s（保留原檔）：%w", p.Conf, err)
 	}
 	return true, skipped, nil
 }
@@ -254,6 +352,9 @@ func (p Paths) EnsureInclude() (bool, IncludeStatus, error) {
 	st, err := p.CheckInclude()
 	if err != nil || st.Found {
 		return false, st, err
+	}
+	if err := safeConfPath(p.Conf); err != nil {
+		return false, st, fmt.Errorf("無法加入 Include：%w", err)
 	}
 	data, err := os.ReadFile(p.Config)
 	perm := fs.FileMode(0o600)

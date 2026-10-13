@@ -1,6 +1,7 @@
 package agentaccess
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,12 +18,13 @@ func testPaths(t *testing.T) Paths {
 	return PathsFor(home, "/nonexistent-passwd-home")
 }
 
-func agentFile() *store.File {
+// agentFile 的金鑰路徑都在 p.KeyDir 底下（sshm 產生的位置）。
+func agentFile(p Paths) *store.File {
 	return &store.File{Hosts: []store.Host{
 		{ID: "h_1", Name: "範例客戶-PROD-VM", Host: "10.0.0.24", Port: 2222, User: "helpdesk", Auth: store.AuthPassword, Password: "test-pass",
-			Agent: &store.AgentAccess{Alias: "sshm-prod-vm", KeyFile: "/tmp/k dir/sshm-prod-vm"}},
+			Agent: &store.AgentAccess{Alias: "sshm-prod-vm", KeyFile: p.KeyPath("sshm-prod-vm")}},
 		{ID: "h_2", Name: "範例客戶-UAT", Host: "10.0.0.25", User: "helpdesk", Auth: store.AuthPassword, Password: "test-pass",
-			Agent: &store.AgentAccess{Alias: "sshm-a-uat", User: "readonly", KeyFile: "/tmp/k/sshm-a-uat"}},
+			Agent: &store.AgentAccess{Alias: "sshm-a-uat", User: "readonly", KeyFile: p.KeyPath("sshm-a-uat")}},
 		{ID: "h_3", Name: "未開通", Host: "10.0.0.26", User: "u", Auth: store.AuthPassword},
 	}}
 }
@@ -39,18 +41,19 @@ func TestPathsForIncludeArg(t *testing.T) {
 }
 
 func TestRenderConf(t *testing.T) {
-	f := agentFile()
+	p := PathsFor("/tmp/k dir", "/nonexistent")
+	f := agentFile(p)
 	// 手改 hosts.json 帶進 % 的機器要略過
 	f.Hosts = append(f.Hosts, store.Host{ID: "h_4", Name: "bad", Host: "10.0.0.%h", User: "u", Auth: store.AuthPassword,
 		Agent: &store.AgentAccess{Alias: "sshm-bad", KeyFile: "/k"}})
-	data, skipped := RenderConf(f)
+	data, skipped := p.RenderConf(f)
 	got := string(data)
 	want := confHeader + `
 Host sshm-a-uat
   HostName 10.0.0.25
   User readonly
   Port 22
-  IdentityFile /tmp/k/sshm-a-uat
+  IdentityFile "/tmp/k dir/.ssh/sshm/sshm-a-uat"
   IdentitiesOnly yes
   IdentityAgent none
 
@@ -58,7 +61,7 @@ Host sshm-prod-vm
   HostName 10.0.0.24
   User helpdesk
   Port 2222
-  IdentityFile "/tmp/k dir/sshm-prod-vm"
+  IdentityFile "/tmp/k dir/.ssh/sshm/sshm-prod-vm"
   IdentitiesOnly yes
   IdentityAgent none
 `
@@ -82,7 +85,7 @@ func TestSyncConfUpdatesAfterHostChange(t *testing.T) {
 	if _, err := os.Stat(p.Conf); !os.IsNotExist(err) {
 		t.Fatal("conf 不應存在")
 	}
-	f := agentFile()
+	f := agentFile(p)
 	if changed, _, err := p.SyncConf(f); err != nil || !changed {
 		t.Fatalf("首次寫入：%v %v", changed, err)
 	}
@@ -135,7 +138,7 @@ func TestSyncConfFollowsSymlink(t *testing.T) {
 	if err := os.Symlink(real, p.Conf); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := p.SyncConf(agentFile()); err != nil {
+	if _, _, err := p.SyncConf(agentFile(p)); err != nil {
 		t.Fatal(err)
 	}
 	if st, _ := os.Lstat(p.Conf); st.Mode()&os.ModeSymlink == 0 {
@@ -278,8 +281,7 @@ func TestConfParsedBySSH(t *testing.T) {
 		t.Skip("沒有 ssh")
 	}
 	p := testPaths(t)
-	f := agentFile()
-	f.Hosts[0].Agent.KeyFile = filepath.Join(p.KeyDir, "sshm-prod-vm")
+	f := agentFile(p)
 	if _, _, err := p.SyncConf(f); err != nil {
 		t.Fatal(err)
 	}
@@ -299,5 +301,133 @@ func TestConfParsedBySSH(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("ssh -G 缺 %q", want)
 		}
+	}
+}
+
+// 審查 #2 實測過的注入值：會讓 ssh 整份設定解析失敗（引號）或語意改變（換行、空白、$、#）。
+var unsafeConfValues = []string{"o'brien", `a"b`, "a b", "a\nProxyCommand x", "a#b", "$(id)", "${HOME}x", `a\b`}
+
+func TestCheckEligibleRejectsConfInjection(t *testing.T) {
+	for _, v := range unsafeConfValues {
+		for _, field := range []string{"host", "user"} {
+			h := pwHost()
+			if field == "host" {
+				h.Host = v
+			} else {
+				h.User = v
+			}
+			if err := CheckEligible(h); err == nil {
+				t.Errorf("%s=%q 應拒絕開通", field, v)
+			}
+		}
+	}
+	h := pwHost()
+	h.Name = `名稱 "含" #引號 $(id)` // 名稱不會寫進 conf（別名另行推導），不擋
+	if err := CheckEligible(h); err != nil {
+		t.Errorf("名稱含特殊字元不應影響：%v", err)
+	}
+	for _, ok := range []string{"10.0.0.24", "vm-01.example.internal", "fe80::1", "2001:db8::24"} {
+		h := pwHost()
+		h.Host = ok
+		if err := CheckEligible(h); err != nil {
+			t.Errorf("host=%q 應可開通：%v", ok, err)
+		}
+	}
+}
+
+// 已開通的機器之後被改成不合法的 host／user（TUI 編輯、import）：該別名略過，其他別名照寫，整份檔仍能被 ssh 解析。
+func TestRenderConfSkipsUnsafeAndStaysParsable(t *testing.T) {
+	if _, err := exec.LookPath("ssh"); err != nil {
+		t.Skip("沒有 ssh")
+	}
+	p := testPaths(t)
+	f := &store.File{Hosts: []store.Host{{ID: "h_ok", Name: `ok "#$(id)`, Host: "10.0.0.24", User: "helpdesk", Auth: store.AuthPassword,
+		Agent: &store.AgentAccess{Alias: "sshm-ok", KeyFile: p.KeyPath("sshm-ok")}}}}
+	for i, v := range unsafeConfValues {
+		for _, field := range []string{"host", "user"} {
+			alias := fmt.Sprintf("sshm-bad-%s-%d", field, i)
+			h := store.Host{ID: "h_" + alias, Name: alias, Host: "10.0.0.25", User: "u", Auth: store.AuthPassword,
+				Agent: &store.AgentAccess{Alias: alias, KeyFile: p.KeyPath(alias)}}
+			if field == "host" {
+				h.Host = v
+			} else {
+				h.User = v
+			}
+			f.Hosts = append(f.Hosts, h)
+		}
+	}
+	if _, _, err := p.SyncConf(f); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(p.Conf)
+	if strings.Count(string(data), "\nHost ") != 1 || !strings.Contains(string(data), "Host sshm-ok\n") {
+		t.Fatalf("只應寫入合法的別名：\n%s", data)
+	}
+	if out, err := exec.Command("ssh", "-G", "-F", p.Conf, "sshm-ok").CombinedOutput(); err != nil {
+		t.Fatalf("ssh -G 解析失敗：%v\n%s\n%s", err, out, data)
+	}
+}
+
+// 寫入流程：先寫暫存檔並以 ssh -G 驗證，驗證失敗就保留舊檔、回報錯誤。
+func TestSyncConfKeepsOldFileWhenCheckFails(t *testing.T) {
+	p := testPaths(t)
+	f := agentFile(p)
+	if _, _, err := p.SyncConf(f); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.ReadFile(p.Conf)
+	orig := CheckConfFile
+	t.Cleanup(func() { CheckConfFile = orig })
+	var checked string
+	CheckConfFile = func(path string, aliases []string) error {
+		data, _ := os.ReadFile(path)
+		checked = string(data)
+		return fmt.Errorf("模擬 ssh 解析失敗")
+	}
+	f.Hosts[0].Host = "10.0.0.99"
+	if _, _, err := p.SyncConf(f); err == nil || !strings.Contains(err.Error(), "保留原檔") {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(checked, "HostName 10.0.0.99") {
+		t.Fatalf("應驗證新內容的暫存檔：%q", checked)
+	}
+	if now, _ := os.ReadFile(p.Conf); string(now) != string(old) {
+		t.Fatal("驗證失敗時不應取代舊檔")
+	}
+	entries, _ := os.ReadDir(p.SSHDir)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Fatalf("不應留下暫存檔：%s", e.Name())
+		}
+	}
+	// 真的 ssh -G：引號會讓解析失敗
+	if _, err := exec.LookPath("ssh"); err == nil {
+		bad := filepath.Join(t.TempDir(), "bad.conf")
+		_ = os.WriteFile(bad, []byte("Host x\n  User o'brien\n"), 0o600)
+		if err := orig(bad, []string{"x"}); err == nil {
+			t.Fatal("預設驗證應抓到 ssh 無法解析的設定")
+		}
+	}
+}
+
+// 金鑰路徑只接受 sshm 在 ~/.ssh/sshm 為該別名產生的檔名；家目錄含引號等字元時無法安全寫入。
+func TestConfProblemKeyFile(t *testing.T) {
+	p := PathsFor("/tmp/k dir", "/nonexistent")
+	h := store.Host{ID: "h_1", Name: "n", Host: "10.0.0.24", User: "u", Auth: store.AuthPassword,
+		Agent: &store.AgentAccess{Alias: "sshm-a", KeyFile: p.KeyPath("sshm-a")}}
+	if got := p.ConfProblem(h); got != "" {
+		t.Fatalf("合法的機器：%q", got)
+	}
+	for _, kf := range []string{"/tmp/k dir/.ssh/sshm/sshm-b", "/home/x/.ssh/id_rsa", "/tmp/k dir/.ssh/sshm/../id_rsa"} {
+		bad := h
+		bad.Agent = &store.AgentAccess{Alias: "sshm-a", KeyFile: kf}
+		if p.ConfProblem(bad) == "" {
+			t.Errorf("KeyFile %q 應停用", kf)
+		}
+	}
+	q := PathsFor("/tmp/o'q", "/nonexistent")
+	h.Agent = &store.AgentAccess{Alias: "sshm-a", KeyFile: q.KeyPath("sshm-a")}
+	if q.ConfProblem(h) == "" {
+		t.Error("家目錄含單引號時應停用")
 	}
 }

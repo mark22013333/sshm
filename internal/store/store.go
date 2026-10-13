@@ -195,7 +195,13 @@ func save(path string, f *File) error {
 }
 
 // WriteFileAtomic 以同目錄暫存檔 → fsync → rename → fsync 目錄寫入；path 是 symlink 時寫到其目標，保留連結。
-func WriteFileAtomic(path string, data []byte, perm fs.FileMode) (err error) {
+func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
+	return WriteFileAtomicChecked(path, data, perm, nil)
+}
+
+// WriteFileAtomicChecked 同 WriteFileAtomic，但在取代前先以 check 驗證寫好的暫存檔；
+// check 失敗時不取代、原檔保持不變。
+func WriteFileAtomicChecked(path string, data []byte, perm fs.FileMode, check func(tmpPath string) error) (err error) {
 	target, err := resolveTarget(path)
 	if err != nil {
 		return err
@@ -223,6 +229,11 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) (err error) {
 	}
 	if err = tmp.Close(); err != nil {
 		return fmt.Errorf("關閉暫存檔失敗：%w", err)
+	}
+	if check != nil {
+		if err = check(tmpName); err != nil {
+			return err
+		}
 	}
 	if err = os.Rename(tmpName, target); err != nil {
 		return fmt.Errorf("取代 %s 失敗：%w", target, err)

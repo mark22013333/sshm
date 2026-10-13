@@ -357,15 +357,16 @@ func TestDisableRemoteUnreachable(t *testing.T) {
 }
 
 func TestListHasNoPasswords(t *testing.T) {
-	f := agentFile()
-	entries := List(f)
+	p := testPaths(t)
+	f := agentFile(p)
+	entries := p.List(f)
 	if len(entries) != 2 {
 		t.Fatalf("entries = %+v", entries)
 	}
 	if e := entries[1]; e.Alias != "sshm-a-uat" || e.User != "readonly" || e.Port != 22 {
 		t.Fatalf("entry = %+v", e)
 	}
-	if empty := List(&store.File{}); empty == nil || len(empty) != 0 {
+	if empty := p.List(&store.File{}); empty == nil || len(empty) != 0 {
 		t.Fatal("沒有開通機器時應回傳空陣列（JSON 為 []）")
 	}
 }
@@ -454,5 +455,14 @@ func TestExpectRunnerArgvHasNoPassword(t *testing.T) {
 	}
 	if !strings.Contains(string(got), "ENV["+h.Password+"]") {
 		t.Fatalf("expect 應從環境變數拿到密碼：\n%s", got)
+	}
+}
+
+func TestPrepareRejectsUnsafeUserFlag(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	for _, u := range unsafeConfValues {
+		if _, err := fx.m.PrepareEnable(context.Background(), fx.file(t), "h_1", "", u); err == nil {
+			t.Errorf("--user %q 應拒絕", u)
+		}
 	}
 }

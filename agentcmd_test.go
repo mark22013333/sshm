@@ -272,3 +272,36 @@ func TestImportResyncsAgentConf(t *testing.T) {
 		t.Fatalf("匯入改了 host 後 conf 應更新：%s", conf)
 	}
 }
+
+// 審查 #2 的端對端情境：已開通後 import 把 user 改成 o'brien。別名停用、整份 ssh 設定仍可解析，且停用狀態看得到。
+func TestImportUnsafeUserDisablesAliasOnly(t *testing.T) {
+	if _, err := exec.LookPath("ssh"); err != nil {
+		t.Skip("沒有 ssh")
+	}
+	e := setupAgentEnv(t, demoHosts()...)
+	if _, err := runAgentCLI(t, "y\n", "enable", "範例客戶-PROD-VM"); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(e.home, "in.json")
+	data := `{"hosts":[{"id":"h_1","name":"範例客戶-PROD-VM","group":"範例客戶","host":"10.0.0.24","port":22,"user":"o'brien","auth":"password","password":"test-pass"}]}`
+	_ = os.WriteFile(src, []byte(data), 0o600)
+	var out, errOut bytes.Buffer
+	if err := runImport([]string{src}, strings.NewReader("y\n"), &out, &errOut); err != nil {
+		t.Fatal(err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "別名已停用") || !strings.Contains(errOut.String(), "o'brien") {
+		t.Fatalf("應提示別名已停用：%s", errOut.String())
+	}
+	conf, _ := os.ReadFile(filepath.Join(e.home, ".ssh", "sshm_agents.conf"))
+	if strings.Contains(string(conf), "o'brien") || strings.Contains(string(conf), "Host sshm-") {
+		t.Fatalf("不合法的機器不應寫入：%s", conf)
+	}
+	cfg := filepath.Join(e.home, ".ssh", "config")
+	if out, err := exec.Command("ssh", "-G", "-F", cfg, "github.com").CombinedOutput(); err != nil {
+		t.Fatalf("整份 ssh 設定應仍可解析：%v\n%s", err, out)
+	}
+	listOut, err := runAgentCLI(t, "", "list", "--json")
+	if err != nil || !strings.Contains(listOut, `"active": false`) || !strings.Contains(listOut, `"problem"`) {
+		t.Fatalf("list 應標出停用：%v\n%s", err, listOut)
+	}
+}

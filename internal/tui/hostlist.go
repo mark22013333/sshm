@@ -297,7 +297,7 @@ func (m *Model) rowView(r row, selected bool) string {
 	if port <= 0 {
 		port = 22
 	}
-	sub := styleDim.Render(fmt.Sprintf("%s@%s:%d", h.User, h.Host, port)) + agentRowMark(h)
+	sub := styleDim.Render(fmt.Sprintf("%s@%s:%d", h.User, h.Host, port)) + m.agentRowMark(h)
 	return marker + "  " + bar + " " + name + "\n" + "    " + bar + " " + sub
 }
 

@@ -87,7 +87,11 @@ func runAgentList(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	entries := agentaccess.List(f)
+	paths, err := agentaccess.DefaultPaths()
+	if err != nil {
+		return err
+	}
+	entries := paths.List(f)
 	if asJSON {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
@@ -98,13 +102,17 @@ func runAgentList(args []string, out io.Writer) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "名稱\t別名\thost\tuser\t群組")
+	fmt.Fprintln(tw, "名稱\t別名\thost\tuser\t群組\t狀態")
 	for _, e := range entries {
 		host := e.Host
 		if e.Port != 22 {
 			host = fmt.Sprintf("%s:%d", e.Host, e.Port)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", store.Printable(e.Name), e.Alias, store.Printable(host), store.Printable(e.User), store.Printable(e.Group))
+		status := "可用"
+		if !e.Active {
+			status = "別名已停用：" + store.Printable(e.Problem)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", store.Printable(e.Name), e.Alias, store.Printable(host), store.Printable(e.User), store.Printable(e.Group), status)
 	}
 	return tw.Flush()
 }
@@ -272,10 +280,14 @@ func syncAgentConf(path string, errOut io.Writer) {
 		return
 	}
 	p, err := agentaccess.DefaultPaths()
+	var skipped []string
 	if err == nil {
-		_, _, err = p.SyncConf(f)
+		_, skipped, err = p.SyncConf(f)
 	}
 	if err != nil {
 		fmt.Fprintln(errOut, "sshm：更新 AI agent 別名設定失敗：", err)
+	}
+	for _, s := range skipped {
+		fmt.Fprintln(errOut, "sshm：以下機器的資料無法安全寫進 ssh 設定，AI agent 別名已停用（修正 host／user 後會自動恢復）：", s)
 	}
 }

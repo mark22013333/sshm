@@ -217,3 +217,26 @@ func TestEditHostResyncsAgentConf(t *testing.T) {
 		t.Fatal("編輯不應清掉開通狀態")
 	}
 }
+
+// 審查 #2：已開通的機器被改成 ssh 設定無法表示的 user，別名停用且清單與狀態列都看得到，不寫壞 conf。
+func TestEditHostUnsafeUserShowsAliasDisabled(t *testing.T) {
+	a := newAgentTUI(t)
+	send(t, a.m, "ctrl+o")
+	a.run(send(t, a.m, "y"))
+	send(t, a.m, "ctrl+e", "tab", "tab", "tab", "tab")
+	a.m.form.input(fieldUser).SetValue("o'brien")
+	send(t, a.m, "ctrl+s")
+	if a.m.mode != modeList {
+		t.Fatalf("存檔失敗：%s", errMsg(a.m))
+	}
+	conf, _ := os.ReadFile(filepath.Join(a.home, ".ssh", "sshm_agents.conf"))
+	if strings.Contains(string(conf), "o'brien") || strings.Contains(string(conf), "Host sshm-") {
+		t.Fatalf("不合法的帳號不應寫進 conf：%s", conf)
+	}
+	if !strings.Contains(a.m.status, "已停用") {
+		t.Fatalf("狀態列應說明別名已停用：%q", a.m.status)
+	}
+	if view := a.m.View(); !strings.Contains(view, "別名已停用") {
+		t.Fatalf("清單應標示別名已停用：\n%s", view)
+	}
+}

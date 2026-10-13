@@ -25,10 +25,17 @@ func CheckEligible(h store.Host) error {
 		return fmt.Errorf("「%s」設定了自訂指令，無法轉成 ssh 別名", store.Printable(h.Name))
 	case strings.TrimSpace(h.ExtraArgs) != "":
 		return fmt.Errorf("「%s」設定了額外 ssh 參數，無法轉成 ssh 別名", store.Printable(h.Name))
-	case strings.Contains(h.Host, "%") || strings.Contains(h.User, "%"):
-		return fmt.Errorf("「%s」的 host 或 user 含 %%，無法寫成 ssh 設定", store.Printable(h.Name))
 	}
-	return store.ValidateHost(h)
+	if err := store.ValidateHost(h); err != nil {
+		return err
+	}
+	if err := ValidConfHost(h.Host); err != nil {
+		return fmt.Errorf("「%s」無法開通：%w", store.Printable(h.Name), err)
+	}
+	if err := ValidConfUser(h.User); err != nil {
+		return fmt.Errorf("「%s」無法開通：%w", store.Printable(h.Name), err)
+	}
+	return nil
 }
 
 // FindHost 依名稱找機器：完全相同優先，其次唯一的不分大小寫相同；同名多台時要求改名，不猜。
@@ -166,10 +173,8 @@ func (m *Manager) PrepareEnable(ctx context.Context, f *store.File, hostID, alia
 	if !plan.Reinstall {
 		plan.User = h.User
 		if user != "" && user != h.User {
-			check := h
-			check.User = user
-			if err := store.ValidateHost(check); err != nil || strings.Contains(user, "%") {
-				return nil, fmt.Errorf("帳號 %q 不合法", user)
+			if err := ValidConfUser(user); err != nil {
+				return nil, err
 			}
 			plan.User, plan.UserSet = user, true
 		}
@@ -178,6 +183,15 @@ func (m *Manager) PrepareEnable(ctx context.Context, f *store.File, hostID, alia
 		} else if defined {
 			return nil, fmt.Errorf("你的 %s 已有 Host %s，請用 --alias 換一個別名", m.Paths.Config, plan.Alias)
 		}
+	}
+	// 先確認寫得進 ssh 設定（含金鑰路徑；家目錄含引號等字元時會在這裡擋下），再產生金鑰與登入遠端
+	check := h
+	check.Agent = &store.AgentAccess{Alias: plan.Alias, KeyFile: m.Paths.KeyPath(plan.Alias)}
+	if plan.UserSet {
+		check.Agent.User = plan.User
+	}
+	if err := m.Paths.confHost(check); err != nil {
+		return nil, fmt.Errorf("「%s」無法開通：%w", store.Printable(h.Name), err)
 	}
 	key, err := EnsureKey(ctx, m.Keygen, m.Paths, plan.Alias)
 	if err != nil {
@@ -363,16 +377,21 @@ type Entry struct {
 	Port  int    `json:"port"`
 	User  string `json:"user"`
 	Group string `json:"group"`
+	// Active 為 false 表示別名目前沒有寫進 ssh 設定（機器資料不合法），Problem 是原因。
+	Active  bool   `json:"active"`
+	Problem string `json:"problem,omitempty"`
 }
 
-// List 列出已開通的機器，依名稱原順序。
-func List(f *store.File) []Entry {
+// List 列出已開通的機器，依名稱原順序；別名因資料不合法而停用的也列出，標 Active=false。
+func (p Paths) List(f *store.File) []Entry {
 	entries := []Entry{}
 	for _, h := range f.Hosts {
 		if h.Agent == nil {
 			continue
 		}
-		entries = append(entries, Entry{Name: h.Name, Alias: h.Agent.Alias, Host: h.Host, Port: effectivePort(h.Port), User: h.AgentUser(), Group: h.Group})
+		problem := p.ConfProblem(h)
+		entries = append(entries, Entry{Name: h.Name, Alias: h.Agent.Alias, Host: h.Host, Port: effectivePort(h.Port), User: h.AgentUser(), Group: h.Group,
+			Active: problem == "", Problem: problem})
 	}
 	return entries
 }

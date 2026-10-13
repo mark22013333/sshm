@@ -188,10 +188,15 @@ func (m *Model) agentView() string {
 	return b.String()
 }
 
-// agentRowMark 是機器第二行的開通標記。
-func agentRowMark(h *store.Host) string {
+// agentRowMark 是機器第二行的開通標記；資料不合法而沒寫進 ssh 設定時明示別名已停用。
+func (m *Model) agentRowMark(h *store.Host) string {
 	if h.Agent == nil {
 		return ""
+	}
+	if mgr := m.opts.Agent; mgr != nil {
+		if problem := mgr.Paths.ConfProblem(*h); problem != "" {
+			return "  " + styleWarn.Render(agentMark+" "+h.Agent.Alias+"（別名已停用："+oneLine(problem)+"）")
+		}
 	}
 	return "  " + styleInfo.Render(agentMark+" "+h.Agent.Alias)
 }
@@ -203,13 +208,16 @@ func (m *Model) syncAgentAfterSave(orig store.Host, editing bool, id string) str
 		return ""
 	}
 	if _, _, err := mgr.Paths.SyncConf(m.file); err != nil {
-		return "；更新 AI agent 別名設定失敗：" + err.Error()
+		return "；更新 AI agent 別名設定失敗：" + oneLine(err.Error())
 	}
 	i := m.file.HostIndex(id)
 	if !editing || i < 0 || m.file.Hosts[i].Agent == nil {
 		return ""
 	}
 	cur := m.file.Hosts[i]
+	if problem := mgr.Paths.ConfProblem(cur); problem != "" {
+		return "；AI agent 別名 " + cur.Agent.Alias + " 已停用（" + oneLine(problem) + "），修正後會自動恢復"
+	}
 	if cur.Host != orig.Host || cur.Port != orig.Port || cur.User != orig.User {
 		return "；AI agent 別名已更新，但新位置尚未安裝公鑰，請執行 sshm agent enable 重新安裝"
 	}
