@@ -1,10 +1,16 @@
 #!/usr/bin/expect -f
-# 用法：sshm-login.exp <埠> <帳號> <主機> <密碼> [額外 ssh 參數...]
+# 用法：SSHM_PASSWORD=<密碼> sshm-login.exp <埠> <帳號> <主機> [額外 ssh 參數...]
+# 密碼不放參數（ps 對其他使用者可見）；讀出後立刻從環境移除，不傳給 ssh 與其子行程。
 set port [lindex $argv 0]
 set username [lindex $argv 1]
 set hostname [lindex $argv 2]
-set password [lindex $argv 3]
-set extra [lrange $argv 4 end]
+set extra [lrange $argv 3 end]
+if {![info exists env(SSHM_PASSWORD)]} {
+    puts stderr "sshm-login.exp：缺少 SSHM_PASSWORD 環境變數"
+    exit 2
+}
+set password $env(SSHM_PASSWORD)
+unset env(SSHM_PASSWORD)
 
 # 只在登入階段自動送密碼：spawn 後 window 秒內、使用者尚未自行輸入、且只送一次。
 set window 20

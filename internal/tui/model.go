@@ -30,6 +30,8 @@ type Options struct {
 type Result struct {
 	// ExecArgv 非空時，呼叫端要以 syscall.Exec 原地執行。
 	ExecArgv []string
+	// ExecEnv 是原地執行時要額外加入的環境變數（密碼經此交給 expect，不放 argv）。
+	ExecEnv []string
 }
 
 type page int

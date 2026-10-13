@@ -131,7 +131,7 @@ func runTUI(query string, startAdd bool) error {
 		return err
 	}
 	if argv := m.Result().ExecArgv; len(argv) > 0 {
-		return launch.Exec(argv)
+		return launch.Exec(argv, m.Result().ExecEnv)
 	}
 	return nil
 }

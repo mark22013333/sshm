@@ -100,13 +100,14 @@ func ExpectRunner(loginScript string, sshArgs ...string) RemoteRunner {
 			"-o", "ConnectTimeout=15",
 		}
 		extra = append(extra, sshArgs...)
-		argv, err := connect.PasswordLoginArgv(h, loginScript, extra)
+		argv, env, err := connect.PasswordLoginArgv(h, loginScript, extra)
 		if err != nil {
 			return "", err
 		}
 		ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Env = append(os.Environ(), env...)
 		// expect 在使用者端 EOF 時會放棄自動輸入密碼，stdin 必須保持開啟、但不送任何東西
 		r, w, err := os.Pipe()
 		if err != nil {

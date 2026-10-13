@@ -136,7 +136,7 @@ func TestTunnelStartAndStop(t *testing.T) {
 		t.Fatalf("create calls = %d", len(creates))
 	}
 	argv := strings.Join(creates[0], "\x00")
-	for _, want := range []string{"--title=⇄ db", "--command= /cfg/sshm-login.exp 22 root 10.0.0.1 'pw 1' -N", "-L\x00"} {
+	for _, want := range []string{"--title=⇄ db", "--command= SSHM_PASSWORD='pw 1' /cfg/sshm-login.exp 22 root 10.0.0.1 -N", "-L\x00"} {
 		if !strings.Contains(strings.ReplaceAll(argv, "\x00", " "), strings.ReplaceAll(want, "\x00", " ")) {
 			t.Errorf("create argv 缺 %q：%q", want, creates[0])
 		}

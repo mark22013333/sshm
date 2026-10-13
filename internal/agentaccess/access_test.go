@@ -430,3 +430,29 @@ func TestDisableRemoteNeedsPublicKey(t *testing.T) {
 		t.Fatal("無法辨識時不應改動遠端")
 	}
 }
+
+// 審查 #4：ExpectRunner 啟動的行程 argv 不含密碼，密碼只經環境變數交給 expect。
+func TestExpectRunnerArgvHasNoPassword(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("只支援 unix")
+	}
+	dir := t.TempDir()
+	rec := filepath.Join(dir, "rec")
+	fake := filepath.Join(dir, "fake-login.exp")
+	body := "#!/bin/sh\nprintf 'ARG[%s]\\n' \"$@\" > \"" + rec + "\"\nprintf 'ENV[%s]\\n' \"$" + connect.PasswordEnv + "\" >> \"" + rec + "\"\necho SSHM_AGENT_OK unchanged\n"
+	if err := os.WriteFile(fake, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h := pwHost()
+	h.Password = "test-pass-Argv"
+	if _, err := runRemote(context.Background(), ExpectRunner(fake), h, "helpdesk", RemoveScript(blobA)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(rec)
+	if strings.Contains(strings.Split(string(got), "ENV[")[0], h.Password) {
+		t.Fatalf("argv 含密碼：\n%s", got)
+	}
+	if !strings.Contains(string(got), "ENV["+h.Password+"]") {
+		t.Fatalf("expect 應從環境變數拿到密碼：\n%s", got)
+	}
+}

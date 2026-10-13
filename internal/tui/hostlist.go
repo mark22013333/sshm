@@ -251,7 +251,7 @@ func (m *Model) connect(h store.Host, newTab bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if !newTab {
-		m.result.ExecArgv = plan.Argv
+		m.result.ExecArgv, m.result.ExecEnv = plan.Argv, plan.Env
 		return m, tea.Quit
 	}
 	title := connect.Title(store.ColorEmoji(m.file.EffectiveColor(h)), h.Name)
