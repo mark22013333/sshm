@@ -285,9 +285,9 @@ func TestTunnelPageReadOnlyOutsideOrca(t *testing.T) {
 	if !strings.Contains(m.View(), "Tunnel 需要在 Orca 中執行") {
 		t.Fatalf("view = %q", m.View())
 	}
-	send(t, m, "tab")
+	send(t, m, "tab", "tab")
 	if m.page != pageHosts {
-		t.Fatal("tab should switch back")
+		t.Fatal("三頁輪流：Tunnel → 關於 → 機器")
 	}
 }
 

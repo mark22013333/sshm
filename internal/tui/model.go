@@ -24,6 +24,8 @@ type Options struct {
 	Runner     connect.Runner       // 測試可替換；nil 時用 connect.ExecRunner
 	StatePath  string               // tunnel 狀態檔 state.json 的路徑
 	Agent      *agentaccess.Manager // AI agent 開通；nil 時 Ctrl+O 只顯示錯誤
+	Update     UpdateService        // 版本檢查與自我更新；nil 時不檢查也不能更新
+	About      AboutPaths           // 「關於」頁顯示的檔案位置
 }
 
 // Result 是 TUI 結束後交給呼叫端的動作。
@@ -39,6 +41,7 @@ type page int
 const (
 	pageHosts page = iota
 	pageTunnels
+	pageAbout
 )
 
 type mode int
@@ -86,6 +89,11 @@ type Model struct {
 	// 查詢序號：丟棄過時結果、tick 時跳過仍在進行中的查詢
 	tSeq, tAppliedSeq, tMinSeq, tInFlight int
 
+	// 關於頁與自我更新
+	latest      string // 背景檢查得到的最新版；空字串表示未知
+	updatedTo   string // 已更新成的版本（需重開 sshm）
+	aboutOffset int
+
 	status    string
 	statusErr bool
 	width     int
@@ -119,7 +127,12 @@ func New(opts Options) *Model {
 // Result 回傳結束後要執行的動作。
 func (m *Model) Result() Result { return m.result }
 
-func (m *Model) Init() tea.Cmd { return textinput.Blink }
+func (m *Model) Init() tea.Cmd {
+	if m.opts.Update == nil {
+		return textinput.Blink
+	}
+	return tea.Batch(textinput.Blink, m.checkUpdateCmd())
+}
 
 func (m *Model) groupNames() []string {
 	names := make([]string, 0, len(m.file.Groups))
@@ -165,6 +178,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.applyTunnelAction(msg)
 	case agentEnableDoneMsg, agentRemoteDoneMsg, agentLocalDoneMsg:
 		return m, m.applyAgentMsg(msg)
+	case updateCheckMsg:
+		m.applyUpdateCheck(msg)
+		return m, nil
+	case updateDoneMsg:
+		m.applyUpdateDone(msg)
+		return m, nil
 	case orcaDoneMsg:
 		m.mode = modeList
 		if msg.err != nil {
@@ -193,16 +212,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateAgentLocalOnly(msg)
 		}
 		if msg.String() == "tab" {
-			if m.page == pageHosts {
+			// 三頁輪流：機器 → Tunnel → 關於 → 機器
+			switch m.page {
+			case pageHosts:
 				m.page = pageTunnels
 				m.status = ""
 				return m, m.enterTunnelPage()
+			case pageTunnels:
+				m.page = pageAbout
+				m.status = ""
+				return m, nil
 			}
 			m.page = pageHosts
+			m.setStatus("", false)
 			return m, nil
 		}
-		if m.page == pageTunnels {
+		switch m.page {
+		case pageTunnels:
 			return m.updateTunnelList(msg)
+		case pageAbout:
+			return m.updateAbout(msg)
 		}
 		return m.updateList(msg)
 	}
@@ -294,20 +323,29 @@ func (m *Model) View() string {
 		return m.tabsView() + "\n\n" + m.agentView()
 	}
 	header := m.tabsView()
-	if m.page == pageTunnels {
+	switch m.page {
+	case pageTunnels:
 		return m.tunnelPageView()
+	case pageAbout:
+		return m.aboutView()
 	}
 	return header + "\n" + m.search.View() + "\n" + m.listView() + "\n" + m.footerView()
 }
 
 func (m *Model) tabsView() string {
-	hosts, tunnels := styleTabInactive.Render("機器"), styleTabInactive.Render("Tunnel")
-	if m.page == pageHosts {
-		hosts = styleTabActive.Render("機器")
-	} else {
-		tunnels = styleTabActive.Render("Tunnel")
+	tabs := []struct {
+		p    page
+		name string
+	}{{pageHosts, "機器"}, {pageTunnels, "Tunnel"}, {pageAbout, "關於"}}
+	out := make([]string, 0, len(tabs))
+	for _, t := range tabs {
+		if t.p == m.page {
+			out = append(out, styleTabActive.Render(t.name))
+		} else {
+			out = append(out, styleTabInactive.Render(t.name))
+		}
 	}
-	return hosts + " " + tunnels
+	return strings.Join(out, " ")
 }
 
 func (m *Model) footerView() string {
@@ -334,6 +372,8 @@ func (m *Model) footerView() string {
 		status = styleError.Render(m.status)
 	case m.status != "":
 		status = styleInfo.Render(m.status)
+	case m.updateNotice() != "":
+		status = styleWarn.Render(m.updateNotice())
 	}
 	where := "Enter 原地連線"
 	if m.opts.InOrca {
