@@ -109,8 +109,12 @@ func (p *EnablePlan) Summary() []string {
 		"登入帳號：" + p.User,
 		"公鑰指紋：" + p.Key.Fingerprint + "（ed25519，無 passphrase）",
 		"ssh 別名：" + p.Alias + "（agent 以 `ssh " + p.Alias + "` 連線）",
-		fmt.Sprintf("遠端：用 sshm 存的密碼登入，把公鑰附加到 %s 的 ~/.ssh/authorized_keys（行首 %s、行尾 %s；不動其他行）", p.User, KeyOptions, KeyComment(p.Alias)),
-		"本機寫入：" + strings.Join(p.LocalFiles, "、"),
+		fmt.Sprintf("遠端：用 sshm 存的密碼登入，把公鑰附加到 %s 的 ~/.ssh/authorized_keys", p.User),
+		fmt.Sprintf("      （行首 %s、行尾 %s；不動其他行）", KeyOptions, KeyComment(p.Alias)),
+		"本機寫入：",
+	}
+	for _, f := range p.LocalFiles {
+		lines = append(lines, "  - "+f)
 	}
 	if p.UserSet {
 		lines = append(lines, fmt.Sprintf("注意：密碼原本屬於 %s，將以同一組密碼嘗試登入 %s，只試一次；失敗就停止，不會重試", h.User, p.User))

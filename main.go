@@ -118,11 +118,14 @@ func runTUI(query string, startAdd bool) error {
 		return fmt.Errorf("寫出 expect 登入腳本失敗：%w", err)
 	}
 	orca, inOrca := connect.DetectOrca(os.Getenv)
+	// 取不到時 Ctrl+O 只顯示錯誤，不影響其他功能
+	agent, _ := newAgentManager(path)
 	m := tui.New(tui.Options{
 		Path: path, File: file, ScriptPath: script,
 		Query: query, StartAdd: startAdd,
 		Orca: orca, InOrca: inOrca,
 		StatePath: filepath.Join(filepath.Dir(path), "state.json"),
+		Agent:     agent,
 	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		return err
