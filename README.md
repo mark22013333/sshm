@@ -68,7 +68,7 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 | Tab | 切換「機器」「Tunnel」頁 |
 | Esc | 清空搜尋，再按一次離開 |
 
-Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必填：名稱、host、user；認證方式與顏色用 ←→ 切換，Ctrl+S 儲存、Esc 取消：
+Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必填：名稱、host、user；認證方式與顏色用 ←→ 切換，認證方式為 password 時按 Ctrl+R 可切換顯示／隱藏密碼，Ctrl+S 儲存、Esc 取消：
 
 ![新增機器表單：名稱、群組、host、port、user、認證方式、密碼、顏色、額外 ssh 參數、自訂指令](docs/images/host-form.png)
 

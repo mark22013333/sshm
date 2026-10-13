@@ -171,6 +171,11 @@ func (f *hostForm) update(msg tea.KeyMsg) (formResult, tea.Cmd) {
 		return formCancel, nil
 	case "ctrl+s":
 		return f.trySubmit()
+	case "ctrl+r":
+		if f.auth() == store.AuthPassword {
+			f.togglePasswordReveal()
+		}
+		return formContinue, nil
 	case "tab", "down":
 		return formContinue, f.move(1)
 	case "shift+tab", "up":
@@ -213,6 +218,15 @@ func (f *hostForm) update(msg tea.KeyMsg) (formResult, tea.Cmd) {
 		return formContinue, cmd
 	}
 	return formContinue, nil
+}
+
+// togglePasswordReveal 切換密碼欄的明碼／遮罩顯示。
+func (f *hostForm) togglePasswordReveal() {
+	if f.password.EchoMode == textinput.EchoPassword {
+		f.password.EchoMode = textinput.EchoNormal
+	} else {
+		f.password.EchoMode = textinput.EchoPassword
+	}
 }
 
 func (f *hostForm) trySubmit() (formResult, tea.Cmd) {
@@ -323,6 +337,13 @@ func (f *hostForm) view() string {
 		b.WriteString(styleError.Render(f.err) + "\n")
 	}
 	help := "Tab/↑↓ 切換欄位 · ←→ 切換選項 · Ctrl+S 儲存 · Esc 取消"
+	if f.auth() == store.AuthPassword {
+		reveal := "Ctrl+R 顯示密碼"
+		if f.password.EchoMode == textinput.EchoNormal {
+			reveal = "Ctrl+R 隱藏密碼"
+		}
+		help = reveal + " · " + help
+	}
 	if f.focus == fieldGroup {
 		help = "Ctrl+G 循環選既有群組 · " + help
 	}
