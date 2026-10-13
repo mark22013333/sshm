@@ -24,6 +24,7 @@ macOS 上的 SSH 機器管理 TUI，取代使用者在 iTerm2 Profiles 裡以 `l
 | `sshm import-iterm` | 從 iTerm2 匯入（第 7 節） |
 | `sshm export [--with-passwords] <檔案>` | 匯出 JSON，預設不含密碼 |
 | `sshm import <檔案>` | 匯入 JSON（同 id 覆蓋前先確認） |
+| `sshm agent list [--json]`／`enable <機器名稱> [--alias] [--user]`／`disable <機器名稱>`／`guide` | AI agent 存取（第 9 節） |
 | `sshm zsh-widget` | 印出 Ctrl+O 的 zsh widget 設定，由使用者自行貼進 `.zshrc`；**程式不得自動修改 `.zshrc`** |
 
 zsh widget 行為：在提示列按 Ctrl+O 開 sshm；提示列上已輸入的文字保留不動。
@@ -119,7 +120,8 @@ Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值�
 機器頁：
 - 頂端搜尋框，開啟即取得焦點；比對名稱、host、user、群組（不分大小寫、子字串）。
 - 清單依群組折疊，群組列顯示機器數；左側色條，名稱下方小字 `user@host:port`。
-- 鍵：↑↓ 移動、Enter 原地連線、Shift+Enter 或 Ctrl+T 開 Orca 新分頁（Cmd+Enter 不會送進 terminal）、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+d` 複製一台、`ctrl+x` 刪除（需二次確認）、←→ 折疊／展開群組、Esc 清空搜尋或離開。
+- 鍵：↑↓ 移動、Enter 原地連線、Shift+Enter 或 Ctrl+T 開 Orca 新分頁（Cmd+Enter 不會送進 terminal）、`ctrl+n` 新增、`ctrl+e` 編輯、`ctrl+d` 複製一台、`ctrl+x` 刪除（需二次確認；已開通 AI agent 的要先停用）、`ctrl+o` 開通／停用 AI agent 存取（第 9 節）、←→ 折疊／展開群組、Esc 清空搜尋或離開。
+- 已開通 AI agent 的機器在第二行 `user@host:port` 後顯示 `🤖 <別名>`。
 - 表單欄位：名稱、群組（可選既有或輸入新的）、host、port（預設 22）、user、認證方式、密碼／金鑰檔、顏色、額外 ssh 參數、自訂指令。必填：名稱、host、user。
 
 Tunnel 頁：
@@ -162,3 +164,20 @@ JSON 格式同第 3 節。
 2. `orca terminal create --worktree active --title … --command … --json` 開分頁成功，回傳 `result.terminal.handle`；`terminal list --json` 以 handle 查得到、close 後消失；list 的 `title` 會被 shell 改寫。✅
 3. expect 腳本以假 ssh 驗證：額外參數原樣傳遞、含空白與特殊字元的密碼完整送達。✅（真實 tunnel 未測）
 4. `plutil -extract "New Bookmarks"` 成功；52 個 profile 中 49 個為 `login.exp` 標準 4 參數格式；10 個有多個 tag。✅
+
+## 9. AI agent 存取（2026-10-13）
+
+目的：讓其他 AI agent 只用 `ssh <別名>` 連進機器，不接觸密碼。不做 MCP。
+
+- 只支援 `auth=password`、有密碼、無 `customCommand`、無 `extraArgs`，host／user 不含 `%`；其他拒絕並說明原因。
+- 別名：`sshm-` ＋ 名稱英數部分（小寫、非英數轉 `-`、合併連續 `-`、去頭尾 `-`），無英數改用 host，撞名補 `-2`、`-3`…，上限 64 字；`--alias` 只收小寫英數與 `. _ -`（ssh 比對 Host 前會把命令列主機名轉小寫）；使用者 `~/.ssh/config` 已有同名 Host 時拒絕。
+- 金鑰：每台一把 ed25519，`~/.ssh/sshm/<別名>`（目錄 0700、私鑰 0600、無 passphrase，ssh-keygen 產生），註解 `sshm-agent:<別名>`。
+- 遠端：沿用第 4 節的 expect 腳本，帳號為 agent 帳號，額外參數 `-T -o RemoteCommand=/bin/sh -c '<腳本>' -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ControlPath=none -o ControlMaster=no -o ConnectTimeout=15`；stdin 保持開啟但不送資料（expect 在使用者端 EOF 時會放棄自動送密碼）。腳本為 POSIX sh、不含單引號／`%`／`${`：在 `authorized_keys` 中第一個行尾為 ` sshm-agent:<別名>` 的行就地換成新行、其餘同標記行刪除、沒有就附加；內容不變不寫；改寫用 `cat > 檔` 保留 inode 與權限；確保 `~/.ssh` 0700、`authorized_keys` 0600。新行為 `no-agent-forwarding,no-X11-forwarding <類型> <base64> sshm-agent:<別名>`。成功以輸出中的 `SSHM_AGENT_OK <changed|unchanged|absent>` 判定；回報的輸出遮蔽密碼。
+- 本機：`~/.ssh/sshm_agents.conf` 由 hosts.json 完整重寫（依別名排序，每區塊 HostName、User、Port、IdentityFile、`IdentitiesOnly yes`、`IdentityAgent none`），原子寫入、保留 symlink，內容相同不寫；hosts.json 經 TUI 存檔或 import 後重新產生（改 host／user／port 時別名跟著改，但新位置需重新 enable 安裝公鑰）。`~/.ssh/config` 只在最上方加 `Include ~/.ssh/sshm_agents.conf`（不存在才加；檔案不存在建立 0600；既有檔保留權限與 symlink）；`$HOME` 與 passwd 家目錄不同時改寫 conf 的絕對路徑（ssh 的 `~` 取 passwd 家目錄）。Include 位於 `Host`／`Match` 之後時只警告、不搬動。
+- `--user`：以該機器存的密碼登入指定帳號（只送一次），確認畫面註明密碼原屬另一帳號。
+- 開通順序：確認 → 遠端安裝 → 鎖內寫 hosts.json（host／port／user 被其他實例改過或別名撞名則中止）→ 寫 conf、加 Include → `ssh -o BatchMode=yes -F <ssh config> <別名> true`。任一步失敗即復原（移除遠端公鑰、清 hosts.json、重寫 conf、刪新金鑰），錯誤訊息列出無法復原的殘留；原本已開通的重新安裝失敗時維持原狀。
+- 停用：確認 → 以密碼登入移除標記行 → 清 hosts.json、重寫 conf、刪金鑰（只刪 `~/.ssh/sshm/` 底下的檔）。遠端失敗時說明遠端公鑰仍在，再詢問是否只清本機。
+- 確認：enable／disable（CLI 與 TUI Ctrl+O）都列出 VM、帳號、公鑰指紋（停用時為金鑰路徑）、別名、會寫入的檔案，按 y 才執行；CLI 要求 stdin 與 stdout 皆為終端機，否則直接拒絕；不提供跳過確認的選項。`list` 唯讀。
+- `list --json`：`[{name, alias, host, port, user, group}]`，無開通時 `[]`，不含密碼。
+- `guide`：印出給 agent 指引檔的說明（先 `sshm agent list --json`，再 `ssh <alias>`，不可要求密碼）。
+- 已開通的機器不能直接刪除（需先停用）。

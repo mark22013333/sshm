@@ -64,7 +64,8 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 | Enter | 在目前的 terminal 原地連線 |
 | Shift+Enter／Ctrl+T | 在 Orca 中開新分頁連線，不在 Orca 時改為原地連線（Orca 把 Shift+Enter 送成 ESC+Enter，等同 Alt+Enter；Cmd+Enter 不會送進 terminal，無效） |
 | ←→ | 折疊／展開群組 |
-| Ctrl+N／Ctrl+E／Ctrl+D／Ctrl+X | 新增／編輯／複製／刪除（刪除要按 y 確認） |
+| Ctrl+N／Ctrl+E／Ctrl+D／Ctrl+X | 新增／編輯／複製／刪除（刪除要按 y 確認；已開通給 AI agent 的要先停用） |
+| Ctrl+O | 開通／停用選取機器的 AI agent 存取（見「給 AI agent 使用」，要按 y 確認） |
 | Tab | 切換「機器」「Tunnel」頁 |
 | Esc | 清空搜尋，再按一次離開 |
 
@@ -117,6 +118,43 @@ sshm import-iterm --plist <路徑>        # 改讀指定的 plist
 - 先進預覽畫面：預設全選；已有相同 host＋port＋user 的標「重複」、預設不勾；參數數量不對、port 不是數字、user／host 以 `-` 開頭或含控制字元的標「無法匯入」並說明原因（不顯示密碼）。
 - 預覽鍵位：↑↓ 移動、空白 勾選、←→ 切換群組（有多個 tag 時，預設第一個）、a 全選、n 全不選、Enter 匯入、Esc 取消。新群組會自動建立、不設顏色。
 - 完成後顯示匯入幾台、略過幾台。讀取過程只透過 `plutil -extract "New Bookmarks"` 的輸出在記憶體中處理，不寫任何暫存檔。
+
+## 給 AI agent 使用
+
+讓別的 AI agent（Claude Code、Codex 等）能連進 VM 查東西，但**不讓 agent 碰到密碼**：sshm 用已存的密碼登入一次，替每台機器裝上一把專用金鑰並寫好 ssh 別名，之後 agent 只用 `ssh <別名>` 連線。
+
+```sh
+sshm agent enable 範例客戶-PROD-VM          # 開通（列出要做的事，按 y 才執行）
+sshm agent enable 範例客戶-PROD-VM --alias prod-vm --user readonly
+sshm agent list                             # 已開通的機器：名稱、別名、host、user、群組
+sshm agent list --json                      # 給 agent 讀的格式（不含密碼）
+sshm agent disable 範例客戶-PROD-VM         # 停用（按 y 才執行）
+sshm agent guide                            # 印出給 agent 指引檔的說明
+```
+
+在 TUI 的機器清單選一台按 **Ctrl+O** 也能開通，已開通的再按一次是停用；已開通的機器在 `user@host:port` 後面顯示 `🤖 別名`。
+
+開通做的事（確認畫面會逐項列出，包括公鑰指紋與會寫入的檔案）：
+
+1. 產生一把 ed25519 金鑰（無 passphrase）放在 `~/.ssh/sshm/<別名>`，目錄 0700、私鑰 0600。
+2. 用 sshm 存的密碼登入（沿用連線用的 expect 腳本，只用密碼、只送一次），把公鑰加到遠端該帳號的 `~/.ssh/authorized_keys`：行首 `no-agent-forwarding,no-X11-forwarding`、行尾註解 `sshm-agent:<別名>`。重複開通不會產生重複行；同時確保 `~/.ssh` 0700、`authorized_keys` 0600；其他行不動。
+3. 把別名寫進 sshm 自管的 `~/.ssh/sshm_agents.conf`（HostName、User、Port、IdentityFile、`IdentitiesOnly yes`、`IdentityAgent none`），並在 `~/.ssh/config` **最上方**加一行 `Include ~/.ssh/sshm_agents.conf`（已有就不加；沒有 config 會建立，權限 0600）。若你的 config 裡這行位於某個 `Host`／`Match` 之後（含 `Host *`），sshm 只會警告，請自己把它移到最上方。
+4. 以 `ssh -o BatchMode=yes -F ~/.ssh/config <別名> true` 實際連一次驗證。任何一步失敗都會復原（移除遠端公鑰、清掉別名與新產生的金鑰），並說明還有什麼殘留。
+
+- 別名預設是 `sshm-` 加上機器名稱裡的英數（轉小寫，其他字元轉成 `-`），例：`範例客戶-PROD-VM` → `sshm-prod-vm`；名稱沒有英數時改用 host（`sshm-10-0-0-24`）；撞名時補 `-2`、`-3`。`--alias` 只能用小寫英數與 `. _ -`；你自己的 `~/.ssh/config` 已有同名 Host 時會拒絕。
+- 登入帳號預設是 sshm 存的 user。`--user` 指定其他帳號時，會用**同一組密碼**嘗試登入那個帳號（只試一次，失敗就停止），確認畫面會特別註明。
+- 只支援認證方式為 password、沒有自訂指令、沒有額外 ssh 參數的機器；其他會直接拒絕並說明原因。非 22 的 port 會寫進別名。
+- 在 sshm 改了已開通機器的 host／user／port，存檔時別名設定會跟著更新；但新位置還沒有公鑰，請再執行一次 `sshm agent enable <機器名稱>`。
+- 停用：先用密碼登入遠端刪掉行尾是 `sshm-agent:<別名>` 的那一行，再移除別名區塊與金鑰。遠端連不到時會告訴你遠端公鑰仍在，再問要不要只清本機。
+- enable／disable 一定要在互動終端機按 y 確認：從管線、排程等非互動環境執行會直接拒絕，**沒有 `--yes` 之類跳過確認的選項**。`list` 是唯讀的，不需確認。
+- 開通狀態存在 hosts.json 該機器的 `agent` 欄位（本機狀態，匯出時不帶、匯入時忽略）。
+
+給 agent 的指引（貼進 CLAUDE.md／AGENTS.md，`sshm agent guide` 會印出完整版）：
+
+```text
+先執行 sshm agent list --json 找機器，再用 ssh <alias> '<指令>' 連線。
+不需要、也不可以要求或讀取任何密碼；清單沒有的機器請使用者用 sshm 開通。
+```
 
 ## 匯出／匯入 JSON
 
@@ -237,6 +275,7 @@ stateDiagram-v2
 - **沒開 zsh 的 `HIST_IGNORE_SPACE` 時，連線指令（含密碼）會寫進 shell history**；分頁若是 bash，要另外設定 `HISTCONTROL=ignorespace`。
 - **Orca 可能把 scrollback 存到磁碟**（依 Orca 原始碼推論，未實測），密碼可能因此留在磁碟上。
 - **密碼不能含 emoji 等非 BMP 字元**：macOS 內建的 expect 是 Tcl 8.5，非 BMP 字元送出時會被重複編碼，導致密碼錯誤。中文等 BMP 字元正常。
+- **AI agent 的金鑰沒有 passphrase**：任何能讀 `~/.ssh/sshm/` 的程式都能用它登入已開通的機器，請只開通需要的機器，用完就停用。
 - **新分頁的 shell 要是 POSIX 相容的 shell（zsh、bash、sh）**：連線指令用 POSIX 單引號規則跳脫。fish 對單引號內的 `\` 有不同解讀，密碼或參數含 `\`、`'` 時可能出錯。
 
 ## 發版（維護者）
