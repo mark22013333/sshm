@@ -28,6 +28,9 @@ const usage = `用法：
   sshm export [--with-passwords] [--force] <檔案>
                        匯出 JSON（預設不含密碼；目的檔已存在時需 --force）
   sshm import <檔案>   匯入 JSON（同 id 且內容不同的項目先列出差異再確認）
+  sshm agent list [--json] | enable <機器名稱> | disable <機器名稱> | guide
+                       把機器開通給 AI agent（專用金鑰＋ssh 別名，agent 不會拿到密碼）；
+                       詳見 sshm agent --help
   sshm --version       顯示版本
 `
 
@@ -67,7 +70,7 @@ func parseArgs(args []string) command {
 		return command{name: "help"}
 	case "-v", "--version", "version":
 		return command{name: "version"}
-	case "zsh-widget", "add", "import-iterm", "export", "import":
+	case "zsh-widget", "add", "import-iterm", "export", "import", "agent":
 		return command{name: args[0], args: args[1:]}
 	}
 	return command{name: "tui", query: strings.Join(args, " ")}
@@ -90,7 +93,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "export":
 		return report(stderr, runExport(cmd.args, stdout))
 	case "import":
-		return report(stderr, runImport(cmd.args, os.Stdin, stdout))
+		return report(stderr, runImport(cmd.args, os.Stdin, stdout, stderr))
+	case "agent":
+		return report(stderr, runAgent(cmd.args, os.Stdin, stdout))
 	}
 	if err := runTUI(cmd.query, cmd.name == "add"); err != nil {
 		fmt.Fprintln(stderr, "sshm：", err)

@@ -75,7 +75,7 @@ func runExport(args []string, out io.Writer) error {
 	return nil
 }
 
-func runImport(args []string, in io.Reader, out io.Writer) error {
+func runImport(args []string, in io.Reader, out, errOut io.Writer) error {
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
 		return errors.New("用法：sshm import <檔案>")
 	}
@@ -83,7 +83,12 @@ func runImport(args []string, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return transfer.RunImport(path, args[0], in, out)
+	if err := transfer.RunImport(path, args[0], in, out); err != nil {
+		return err
+	}
+	// 覆蓋的機器可能改了 host／user／port，已開通的別名跟著更新
+	syncAgentConf(path, errOut)
+	return nil
 }
 
 // plistArg 解析 import-iterm 的 --plist；預設為 ~/Library/Preferences/com.googlecode.iterm2.plist。
