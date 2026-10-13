@@ -618,3 +618,33 @@ func TestEnableRecordsInstallLocation(t *testing.T) {
 		t.Fatalf("installed = %+v", got)
 	}
 }
+
+// 審查低項：同一台機器同時被兩個 sshm 以不同別名開通，後完成的一方要失敗並收回自己的金鑰與遠端公鑰，不留孤兒私鑰。
+func TestConcurrentEnableSameHostNoOrphanKey(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	ctx := context.Background()
+	p1, err := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "aaa", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "bbb", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.Enable(ctx, p1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.Enable(ctx, p2); err == nil || !strings.Contains(err.Error(), "開通期間") {
+		t.Fatalf("後完成的開通應失敗：%v", err)
+	}
+	if a := fx.file(t).Hosts[0].Agent; a == nil || a.Alias != "aaa" {
+		t.Fatalf("應保留先完成的開通：%+v", a)
+	}
+	if _, err := os.Stat(p2.Key.Private); !os.IsNotExist(err) {
+		t.Fatal("失敗方新產生的私鑰應刪除")
+	}
+	ak, _ := os.ReadFile(filepath.Join(fx.remote.home, ".ssh", "authorized_keys"))
+	if !strings.Contains(string(ak), p1.Key.TypeBlob) || strings.Contains(string(ak), p2.Key.TypeBlob) {
+		t.Fatalf("遠端應只剩先完成的公鑰：%q", ak)
+	}
+}

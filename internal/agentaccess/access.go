@@ -287,6 +287,13 @@ func (m *Manager) Enable(ctx context.Context, plan *EnablePlan) (EnableResult, e
 		if cur.Host != plan.Host.Host || effectivePort(cur.Port) != effectivePort(plan.Host.Port) || cur.User != plan.Host.User {
 			return errors.New("機器的 host／port／user 在開通期間被其他 sshm 修改")
 		}
+		// 另一個 sshm 在開通期間先開通（或停用）了這台：不覆寫，失敗並收回本次的金鑰，避免孤兒私鑰
+		switch {
+		case !plan.Reinstall && cur.Agent != nil:
+			return fmt.Errorf("這台在開通期間已被其他 sshm 以別名 %s 開通", cur.Agent.Alias)
+		case plan.Reinstall && (cur.Agent == nil || cur.Agent.Alias != plan.Alias):
+			return errors.New("這台的開通狀態在重新安裝期間被其他 sshm 變更")
+		}
 		// 保留先前的安裝位置（重新開通到新位置時，舊位置留待停用時清除）
 		if cur.Agent != nil {
 			for _, l := range cur.Agent.Installed {

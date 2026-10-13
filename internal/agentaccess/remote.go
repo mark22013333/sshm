@@ -33,7 +33,8 @@ const keyAwk = `awk -v kt="$kt" -v kb="$kb" -v line="$line" "{ mine=0; ` +
 	`if (mine) { if (line!=\"\" && done==0) { print line; done=1 } next } print } ` +
 	`END { if (line!=\"\" && done==0) print line }"`
 
-// remoteScript 產生在遠端執行的 POSIX sh 腳本：內容不變時不寫檔；改寫時用 cat > 保留原檔的 inode、權限與 symlink。
+// remoteScript 產生在遠端執行的 POSIX sh 腳本：內容不變時不寫檔；改寫時以暫存檔 rename 取代（結果為 0600），
+// authorized_keys 是 symlink 時改寫其目標、保留連結。
 // typeBlob 只能來自 parsePublicKey（key type 與 base64 字元）；腳本不含單引號、% 與「${」，
 // 可安全包進 /bin/sh -c '…' 並當成 ssh 的 RemoteCommand。
 func remoteScript(typeBlob, line string) string {
@@ -60,8 +61,8 @@ func remoteScript(typeBlob, line string) string {
 		`t=$(mktemp "$d/.sshm-agent.XXXXXX") || exit 3`,
 		keyAwk+` "$f" > "$t" || { rm -f "$t"; exit 3; }`,
 		`if cmp -s "$t" "$f"; then rm -f "$t"; echo `+okMarker+` unchanged; exit 0; fi`,
-		`cat "$t" > "$f" || { rm -f "$t"; exit 3; }`,
-		`rm -f "$t"`,
+		// 一般檔用同目錄 rename（原子，斷線也不會留下截斷的檔）；symlink 才退回 cat > 寫到目標
+		`if [ -L "$f" ]; then cat "$t" > "$f" || { rm -f "$t"; exit 3; }; rm -f "$t"; else mv -f "$t" "$f" || { rm -f "$t"; exit 3; }; fi`,
 		`echo `+okMarker+` changed`,
 	)
 	return strings.Join(steps, "; ")

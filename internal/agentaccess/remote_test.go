@@ -198,3 +198,39 @@ func TestInstallAndRemoveMatchByKeyBlobNotComment(t *testing.T) {
 		t.Fatalf("移除只刪本機公鑰那行：out=%q\ngot  %q\nwant %q", out, got, base)
 	}
 }
+
+// 審查低項：改寫 authorized_keys 用同目錄暫存檔 rename（原子），中途斷線不會留下截斷的檔案；symlink 則寫到目標、保留連結。
+func TestRemoteWriteIsAtomicRename(t *testing.T) {
+	home := t.TempDir()
+	ssh := filepath.Join(home, ".ssh")
+	_ = os.MkdirAll(ssh, 0o700)
+	ak := filepath.Join(ssh, "authorized_keys")
+	_ = os.WriteFile(ak, []byte("ssh-rsa AAAAB3Nza-user-key user@laptop\n"), 0o600)
+	before, _ := os.Stat(ak)
+	runLocal(t, home, InstallScript("sshm-a", blobA))
+	after, _ := os.Stat(ak)
+	if os.SameFile(before, after) {
+		t.Fatal("一般檔應以 rename 原子取代（inode 會改變）")
+	}
+	if after.Mode().Perm() != 0o600 {
+		t.Fatalf("perm = %o", after.Mode().Perm())
+	}
+	// symlink：寫到目標，連結保留
+	home2 := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(home2, ".ssh"), 0o700)
+	target := filepath.Join(t.TempDir(), "real_keys")
+	_ = os.WriteFile(target, []byte("ssh-rsa AAAAB3Nza-user-key user@laptop\n"), 0o600)
+	link := filepath.Join(home2, ".ssh", "authorized_keys")
+	_ = os.Symlink(target, link)
+	runLocal(t, home2, InstallScript("sshm-a", blobA))
+	if st, _ := os.Lstat(link); st.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("symlink 被換成一般檔")
+	}
+	if data, _ := os.ReadFile(target); !strings.Contains(string(data), blobA) {
+		t.Fatalf("目標檔應寫入公鑰：%q", data)
+	}
+	entries, _ := os.ReadDir(filepath.Join(home, ".ssh"))
+	if len(entries) != 1 {
+		t.Fatalf("不應留下暫存檔：%v", entries)
+	}
+}
