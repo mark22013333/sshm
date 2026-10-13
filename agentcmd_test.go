@@ -239,7 +239,7 @@ func TestAgentDisableRemoteUnreachable(t *testing.T) {
 
 func TestAgentGuideAndHelp(t *testing.T) {
 	out, _ := runAgentCLI(t, "", "guide")
-	for _, want := range []string{"sshm agent list --json", "ssh <alias>", "不可以", "密碼"} {
+	for _, want := range []string{"sshm agent list --json", "ssh <alias>", "不要要求", "密碼"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("guide 缺 %q", want)
 		}
@@ -306,5 +306,18 @@ func TestImportUnsafeUserDisablesAliasOnly(t *testing.T) {
 	listOut, err := runAgentCLI(t, "", "list", "--json")
 	if err != nil || !strings.Contains(listOut, `"active": false`) || !strings.Contains(listOut, `"problem"`) {
 		t.Fatalf("list 應標出停用：%v\n%s", err, listOut)
+	}
+}
+
+// 審查 #1：說明文字誠實：確認關卡是防誤開通，不是防惡意繞過。
+func TestAgentUsageStatesBoundary(t *testing.T) {
+	out, err := runAgentCLI(t, "", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"防止誤開通", "不是防止惡意繞過", "同一個 OS 帳號"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("說明缺 %q：\n%s", want, out)
+		}
 	}
 }

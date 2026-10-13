@@ -27,8 +27,11 @@ const agentUsage = `用法：
                        移除遠端公鑰、別名與金鑰（需在終端機確認）
   sshm agent guide     印出給 AI agent 指引檔（CLAUDE.md／AGENTS.md）的說明
 
-AI agent 的用法：先 sshm agent list --json 找機器，再 ssh <別名> 連線；不需要、也不可以要求密碼。
-enable／disable 一定要在互動終端機按 y 確認，沒有跳過確認的選項。
+AI agent 的用法：先 sshm agent list --json 找機器，再 ssh <別名> 連線；連線不需要密碼，也不要要求或讀取密碼。
+enable／disable 要在互動終端機按 y 確認，沒有跳過確認的選項。
+這道確認是用來防止誤開通，不是防止惡意繞過：agent 與 sshm 在同一個 OS 帳號下執行，技術上讀得到
+hosts.json 的明碼密碼與 ~/.ssh/sshm/ 的私鑰，也能用 pty 工具模擬按鍵。sshm 保證的是 agent 照上面的方式
+正常使用時，不需要也不會接觸密碼。
 `
 
 // isTerminal 判斷 stdin 與 stdout 是否都是終端機；測試可替換。

@@ -648,3 +648,26 @@ func TestConcurrentEnableSameHostNoOrphanKey(t *testing.T) {
 		t.Fatalf("遠端應只剩先完成的公鑰：%q", ak)
 	}
 }
+
+// 審查 #1：確認畫面與 guide 要誠實說明安全界線（防誤開通、非防惡意；同一 OS 帳號讀得到密碼與私鑰）。
+func TestEnableSummaryAndGuideStateBoundary(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	plan, err := fx.m.PrepareEnable(context.Background(), fx.file(t), "h_1", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := strings.Join(plan.Summary(), "\n")
+	for _, want := range []string{"誤開通", "不是防止惡意", "同一個 OS 帳號", "hosts.json", "私鑰", "不需要也不會接觸密碼"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("確認畫面缺 %q：\n%s", want, summary)
+		}
+	}
+	for _, want := range []string{"誤開通", "不要自己執行", "不要要求"} {
+		if !strings.Contains(Guide, want) {
+			t.Errorf("guide 缺 %q", want)
+		}
+	}
+	if strings.Contains(Guide, "不可以取得") {
+		t.Error("guide 不應暗示技術上無法取得密碼")
+	}
+}

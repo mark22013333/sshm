@@ -165,7 +165,7 @@ func (p *EnablePlan) Summary() []string {
 		"公鑰指紋：" + p.Key.Fingerprint + "（ed25519，無 passphrase）",
 		"ssh 別名：" + p.Alias + "（agent 以 `ssh " + p.Alias + "` 連線）",
 		fmt.Sprintf("遠端：用 sshm 存的密碼登入，把公鑰附加到 %s 的 ~/.ssh/authorized_keys", p.User),
-		fmt.Sprintf("      （行首 %s、行尾 %s；不動其他行）", KeyOptions, KeyComment(p.Alias)),
+		fmt.Sprintf("      （行首 %s、行尾註解 %s；以公鑰本體辨識，不動其他行）", KeyOptions, KeyComment(p.Alias)),
 		"本機寫入：",
 	}
 	for _, f := range p.LocalFiles {
@@ -177,6 +177,11 @@ func (p *EnablePlan) Summary() []string {
 	if p.Reinstall {
 		lines = append(lines, "這台已開通，將沿用同一把金鑰重新安裝公鑰（不會產生重複行）")
 	}
+	lines = append(lines,
+		"安全界線：這個確認是用來防止 AI agent 誤開通，不是防止惡意繞過。agent 與 sshm 在同一個 OS 帳號下執行，",
+		"      技術上讀得到 hosts.json 的明碼密碼與 ~/.ssh/sshm/ 的私鑰；sshm 保證的是 agent 用 ssh 別名正常使用時，",
+		"      不需要也不會接觸密碼。",
+	)
 	return lines
 }
 

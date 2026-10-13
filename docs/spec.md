@@ -86,7 +86,7 @@ zsh widget 行為：在提示列按 Ctrl+O 開 sshm；提示列上已輸入的�
 ## 4. 連線
 
 組指令的規則：
-- `auth=password`：`<資料目錄>/sshm-login.exp <port> <user> <host> <password> [extraArgs…]`
+- `auth=password`：`<資料目錄>/sshm-login.exp <port> <user> <host> [extraArgs…]`，密碼經環境變數 `SSHM_PASSWORD` 交給 expect（原地執行時由 exec 帶入環境；Orca 分頁的指令文字為 `SSHM_PASSWORD=<密碼> <腳本> …`）。腳本讀到後立刻 `unset`，不傳給 ssh 及其子行程。
 - `auth=key`：`ssh -o StrictHostKeyChecking=accept-new -p <port> -i <identityFile> [extraArgs…] <user>@<host>`
 - `auth=none`：同上但不帶 `-i`
 - tunnel 另加 `-N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o ControlPath=none -o ControlMaster=no` 與每條規則的 `-L/-R/-D`。含 `:` 的 bindAddress／targetHost（IPv6）加中括號，中括號必須成對。組指令前完整驗證：type 僅 L/R/D、port 1–65535、L/R 必填 target、hostId 存在、必須有名稱。
@@ -105,7 +105,7 @@ expect 腳本：程式內嵌 `assets/sshm-login.exp`，啟動時若資料目錄�
 使用者按鍵從一開始就轉送。結束碼：ssh 正常結束時沿用其結束碼，被 signal 結束時回 128+n。key／none 的 ssh 指令同樣在目的地前加 `--`。
 Orca CLI 參數一律用 `--title=<值>`、`--command=<值>` 形式，防止值以 `--` 開頭被當成旗標。
 
-已知取捨（使用者決策，2026-10-09 兩度確認不改 askpass）：密碼出現在 Orca 新分頁的 `--command` 文字（畫面與 scrollback 可見；Orca 可能把 scrollback 存到磁碟，未實測）、expect 的 argv（`ps` 可見），未開 zsh `HIST_IGNORE_SPACE` 時也會進 history。macOS 內建 expect（Tcl 8.5）會把 emoji 等非 BMP 字元送錯，密碼不支援 emoji。
+已知取捨（使用者決策，2026-10-09 兩度確認不改 askpass）：密碼出現在 Orca 新分頁的 `--command` 文字（畫面與 scrollback 可見；Orca 可能把 scrollback 存到磁碟，未實測；`orca terminal create` 行程存活的短暫期間其 argv 也含這段文字），未開 zsh `HIST_IGNORE_SPACE` 時也會進 history。expect 行程的 argv 不含密碼（2026-10-13 起改用環境變數，環境變數只有同一使用者與 root 讀得到）。macOS 內建 expect（Tcl 8.5）會把 emoji 等非 BMP 字元送錯，密碼不支援 emoji。
 
 開在哪裡：
 - 偵測 Orca：`TERM_PROGRAM=Orca` 且 `ORCA_CLI_BIN_DIR` 有值。
@@ -167,17 +167,21 @@ JSON 格式同第 3 節。
 
 ## 9. AI agent 存取（2026-10-13）
 
-目的：讓其他 AI agent 只用 `ssh <別名>` 連進機器，不接觸密碼。不做 MCP。
+目的：讓其他 AI agent 只用 `ssh <別名>` 連進機器，正常使用時不需要也不會接觸密碼。不做 MCP。
 
-- 只支援 `auth=password`、有密碼、無 `customCommand`、無 `extraArgs`，host／user 不含 `%`；其他拒絕並說明原因。
+安全界線（2026-10-13 使用者決定維持 TTY 確認、不加 Touch ID）：確認關卡防的是 agent **誤開通**，不防惡意繞過。agent 與 sshm 同一個 OS 帳號，技術上讀得到 hosts.json 的明碼密碼與 `~/.ssh/sshm/` 私鑰，也能用 expect／pty 模擬按鍵通過確認（審查實測）。本功能保證的是：agent 照 guide 使用時只需 `ssh <別名>`，不需要也不會接觸密碼。
+
+- 只支援 `auth=password`、有密碼、無 `customCommand`、無 `extraArgs`；host 須為主機名稱（英數 `. _ -`）、IPv4 或不加中括號的 IPv6，user 須為 POSIX 帳號字元（英數 `. _ -`、不以 `-` 開頭、結尾可一個 `$`）；其他拒絕並說明原因。
 - 別名：`sshm-` ＋ 名稱英數部分（小寫、非英數轉 `-`、合併連續 `-`、去頭尾 `-`），無英數改用 host，撞名補 `-2`、`-3`…，上限 64 字；`--alias` 只收小寫英數與 `. _ -`（ssh 比對 Host 前會把命令列主機名轉小寫）；使用者 `~/.ssh/config` 已有同名 Host 時拒絕。
 - 金鑰：每台一把 ed25519，`~/.ssh/sshm/<別名>`（目錄 0700、私鑰 0600、無 passphrase，ssh-keygen 產生），註解 `sshm-agent:<別名>`。
-- 遠端：沿用第 4 節的 expect 腳本，帳號為 agent 帳號，額外參數 `-T -o RemoteCommand=/bin/sh -c '<腳本>' -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ControlPath=none -o ControlMaster=no -o ConnectTimeout=15`；stdin 保持開啟但不送資料（expect 在使用者端 EOF 時會放棄自動送密碼）。腳本為 POSIX sh、不含單引號／`%`／`${`：在 `authorized_keys` 中第一個行尾為 ` sshm-agent:<別名>` 的行就地換成新行、其餘同標記行刪除、沒有就附加；內容不變不寫；改寫用 `cat > 檔` 保留 inode 與權限；確保 `~/.ssh` 0700、`authorized_keys` 0600。新行為 `no-agent-forwarding,no-X11-forwarding <類型> <base64> sshm-agent:<別名>`。成功以輸出中的 `SSHM_AGENT_OK <changed|unchanged|absent>` 判定；回報的輸出遮蔽密碼。
-- 本機：`~/.ssh/sshm_agents.conf` 由 hosts.json 完整重寫（依別名排序，每區塊 HostName、User、Port、IdentityFile、`IdentitiesOnly yes`、`IdentityAgent none`），原子寫入、保留 symlink，內容相同不寫；hosts.json 經 TUI 存檔或 import 後重新產生（改 host／user／port 時別名跟著改，但新位置需重新 enable 安裝公鑰）。`~/.ssh/config` 只在最上方加 `Include ~/.ssh/sshm_agents.conf`（不存在才加；檔案不存在建立 0600；既有檔保留權限與 symlink）；`$HOME` 與 passwd 家目錄不同時改寫 conf 的絕對路徑（ssh 的 `~` 取 passwd 家目錄）。Include 位於 `Host`／`Match` 之後時只警告、不搬動。
+- 遠端：沿用第 4 節的 expect 腳本，帳號為 agent 帳號，額外參數 `-T -o RemoteCommand=/bin/sh -c '<腳本>' -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ControlPath=none -o ControlMaster=no -o ConnectTimeout=15`；stdin 保持開啟但不送資料（expect 在使用者端 EOF 時會放棄自動送密碼）。腳本為 POSIX sh、不含單引號／`%`／`${`：以**公鑰本體**（key type 後緊接相同 base64）辨識 sshm 的行，行尾註解只供人讀；第一個含本公鑰的行就地換成新行、其餘含本公鑰的行刪除、沒有就附加；內容不變不寫；一般檔以同目錄暫存檔 `mv` 原子取代（結果 0600），symlink 則 `cat >` 寫到目標；確保 `~/.ssh` 0700、`authorized_keys` 0600。新行為 `no-agent-forwarding,no-X11-forwarding <類型> <base64> sshm-agent:<別名>`。成功以輸出中的 `SSHM_AGENT_OK <changed|unchanged|absent>` 判定；回報的輸出遮蔽密碼。
+- 本機：`~/.ssh/sshm_agents.conf` 由 hosts.json 完整重寫（依別名排序，每區塊 HostName、User、Port、IdentityFile、`IdentitiesOnly yes`、`IdentityAgent none`）：先寫暫存檔，以 `ssh -G -F <暫存檔> <別名>` 逐一解析成功才 rename 取代（保留 symlink），失敗保留舊檔並回報；內容相同不寫。寫入前以白名單檢查 host、user、別名與金鑰路徑（必須是 `~/.ssh/sshm/<別名>`，且不含引號、反斜線、`%`、`${`），不合法的機器只略過該別名（停用），TUI 清單與狀態列、import 訊息、`agent list` 都標示原因。hosts.json 經 TUI 存檔或 import 後重新產生（改 host／user／port 時別名跟著改，並提示需重新 enable、舊位置公鑰會在 disable 時清除）。`~/.ssh/config` 只在最上方加 `Include ~/.ssh/sshm_agents.conf`（不存在才加；檔案不存在建立 0600；既有檔保留權限與 symlink）；`$HOME` 與 passwd 家目錄不同時改寫 conf 的絕對路徑（ssh 的 `~` 取 passwd 家目錄）。Include 位於 `Host`／`Match` 之後時只警告、不搬動。
 - `--user`：以該機器存的密碼登入指定帳號（只送一次），確認畫面註明密碼原屬另一帳號。
 - 開通順序：確認 → 遠端安裝 → 鎖內寫 hosts.json（host／port／user 被其他實例改過或別名撞名則中止）→ 寫 conf、加 Include → `ssh -o BatchMode=yes -F <ssh config> <別名> true`。任一步失敗即復原（移除遠端公鑰、清 hosts.json、重寫 conf、刪新金鑰），錯誤訊息列出無法復原的殘留；原本已開通的重新安裝失敗時維持原狀。
-- 停用：確認 → 以密碼登入移除標記行 → 清 hosts.json、重寫 conf、刪金鑰（只刪 `~/.ssh/sshm/` 底下的檔）。遠端失敗時說明遠端公鑰仍在，再詢問是否只清本機。
-- 確認：enable／disable（CLI 與 TUI Ctrl+O）都列出 VM、帳號、公鑰指紋（停用時為金鑰路徑）、別名、會寫入的檔案，按 y 才執行；CLI 要求 stdin 與 stdout 皆為終端機，否則直接拒絕；不提供跳過確認的選項。`list` 唯讀。
-- `list --json`：`[{name, alias, host, port, user, group}]`，無開通時 `[]`，不含密碼。
-- `guide`：印出給 agent 指引檔的說明（先 `sshm agent list --json`，再 `ssh <alias>`，不可要求密碼）。
+- 安裝位置：開通成功時在 hosts.json 的 `agent.installed` 記錄 `{host, port, user, fingerprint}`；重新開通到新位置時保留舊紀錄。
+- 停用：確認（列出每個位置）→ 從 `<金鑰>.pub` 取公鑰本體，以密碼逐一登入所有安裝位置與目前位置刪除含本公鑰的行（讀不到 .pub 時不動遠端並回報）→ 清 hosts.json、重寫 conf、刪金鑰（只刪 `~/.ssh/sshm/` 底下的檔）。任一位置失敗時列出位置、說明遠端公鑰仍在，再詢問是否只清本機。
+- 確認：enable／disable（CLI 與 TUI Ctrl+O）都列出 VM、帳號、公鑰指紋、別名、會寫入的檔案，enable 另註明上述安全界線，按 y 才執行；CLI 要求 stdin 與 stdout 皆為終端機，否則直接拒絕；不提供跳過確認的選項（只防誤開通，見安全界線）。`list` 唯讀。
+- 並行：寫 hosts.json 時若這台已被其他 sshm 開通（或重新安裝期間被變更），本次失敗並收回本次的遠端公鑰與新金鑰。
+- `list --json`：`[{name, alias, host, port, user, group, active, problem?}]`，`active=false` 表示別名因資料不合法而停用、`problem` 為原因；無開通時 `[]`，不含密碼。
+- `guide`：印出給 agent 指引檔的說明（先 `sshm agent list --json`，再 `ssh <alias>`；不要要求或讀取密碼與私鑰、不要自己執行 enable）。
 - 已開通的機器不能直接刪除（需先停用）。
