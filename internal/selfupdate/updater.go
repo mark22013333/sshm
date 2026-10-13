@@ -224,6 +224,7 @@ func writeCache(path string, c cacheFile) error {
 // CheckLatest 回傳 GitHub 上的最新正式版；24 小時內只查一次（失敗也算），其餘時間沿用快取。
 // 失敗時回傳上次已知的最新版與錯誤，由呼叫端決定是否顯示。
 func (u *Updater) CheckLatest(ctx context.Context) (string, error) {
+	u.cleanupTemps()
 	c := readCache(u.CachePath)
 	now := u.now()
 	if age := now.Sub(c.CheckedAt); !c.CheckedAt.IsZero() && age >= 0 && age < checkInterval {
@@ -236,6 +237,17 @@ func (u *Updater) CheckLatest(ctx context.Context) (string, error) {
 	}
 	_ = writeCache(u.CachePath, c)
 	return c.Latest, err
+}
+
+// cleanupTemps 清掉執行檔與快取目錄裡先前更新中斷留下的暫存檔。
+func (u *Updater) cleanupTemps() {
+	now := u.now()
+	if u.ExePath != "" {
+		removeStaleTemps(filepath.Dir(u.ExePath), now)
+	}
+	if u.CachePath != "" {
+		removeStaleTemps(filepath.Dir(u.CachePath), now)
+	}
 }
 
 type asset struct {
@@ -394,6 +406,7 @@ func (u *Updater) Apply(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	removeStaleTemps(filepath.Dir(u.ExePath), u.now())
 	if err := writeFileAtomic(u.ExePath, bin, 0); err != nil {
 		return "", fmt.Errorf("替換執行檔失敗（原檔未變更）：%w", err)
 	}

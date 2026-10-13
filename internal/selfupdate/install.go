@@ -11,6 +11,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 // extractBinary 從 tar.gz 取出根目錄下名為 sshm 的一般檔案；其他項目一律忽略，
@@ -62,7 +64,46 @@ func extractBinary(archive []byte, limit int64) ([]byte, error) {
 	return bin, nil
 }
 
-// writeFileAtomic 寫到同目錄的暫存檔、fsync、設權限後 rename 取代 target；
+// tempPrefix 是 writeFileAtomic 暫存檔的前綴；CreateTemp 會在後面接一串數字。
+const tempPrefix = ".sshm-update-"
+
+// staleTempAge 之內的暫存檔可能是另一個 sshm 正在寫，不清。
+const staleTempAge = 10 * time.Minute
+
+// removeStaleTemps 清掉 dir 裡先前更新中斷留下的暫存檔：只認「前綴＋純數字」的一般檔案，
+// 不跟隨 symlink、不碰目錄與其他檔案。盡力而為，失敗一律略過。
+func removeStaleTemps(dir string, now time.Time) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		suffix, ok := strings.CutPrefix(e.Name(), tempPrefix)
+		if !ok || suffix == "" || strings.Trim(suffix, "0123456789") != "" || !e.Type().IsRegular() {
+			continue
+		}
+		info, err := e.Info() // lstat，不跟隨 symlink
+		if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < staleTempAge {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
+}
+
+// syncDir 讓 rename 本身寫入磁碟；可替換以便測試。
+var syncDir = func(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+// writeFileAtomic 寫到同目錄的暫存檔、fsync、設權限後 rename 取代 target，再 fsync 目錄；
 // perm 為 0 時沿用 target 現有的權限。失敗時移除暫存檔，target 不變。
 func writeFileAtomic(target string, data []byte, perm fs.FileMode) (err error) {
 	if perm == 0 {
@@ -72,7 +113,7 @@ func writeFileAtomic(target string, data []byte, perm fs.FileMode) (err error) {
 		}
 		perm = st.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".sshm-update-*")
+	tmp, err := os.CreateTemp(filepath.Dir(target), tempPrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -95,5 +136,10 @@ func writeFileAtomic(target string, data []byte, perm fs.FileMode) (err error) {
 	if err = os.Chmod(name, perm); err != nil {
 		return err
 	}
-	return os.Rename(name, target)
+	if err = os.Rename(name, target); err != nil {
+		return err
+	}
+	// 替換已完成；部分檔案系統（或 Windows）不支援目錄 fsync，失敗只代表斷電時可能回到舊檔，不算更新失敗
+	_ = syncDir(filepath.Dir(target))
+	return nil
 }
