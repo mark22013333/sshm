@@ -38,7 +38,7 @@ func readAK(t *testing.T, home string) string {
 }
 
 func TestScriptsAreSafeToWrap(t *testing.T) {
-	for _, s := range []string{InstallScript("sshm-a", blobA), RemoveScript("sshm-a")} {
+	for _, s := range []string{InstallScript("sshm-a", blobA), RemoveScript(blobA)} {
 		if strings.ContainsAny(s, "'%\n") || strings.Contains(s, "${") {
 			t.Fatalf("腳本含不可包進 RemoteCommand 的字元：%s", s)
 		}
@@ -93,9 +93,9 @@ func TestInstallIsIdempotentAndKeepsOtherLines(t *testing.T) {
 	if !strings.Contains(out, okMarker+" unchanged") || readAK(t, home) != want {
 		t.Fatalf("重複安裝 out=%q ak=%q", out, readAK(t, home))
 	}
-	// 換了金鑰：就地取代自己那一行，不新增第二行
+	// 換了金鑰：以公鑰本體判斷，舊公鑰那行可能屬於別台電腦，保留不動
 	runLocal(t, home, InstallScript("sshm-a", blobB))
-	want2 := other + AuthorizedKeysLine(blobB, "sshm-a") + "\n"
+	want2 := want + AuthorizedKeysLine(blobB, "sshm-a") + "\n"
 	if got := readAK(t, home); got != want2 {
 		t.Fatalf("換金鑰 = %q", got)
 	}
@@ -120,17 +120,17 @@ func TestRemoveOnlyOwnLine(t *testing.T) {
 	content := "ssh-rsa AAAAB3Nza-user-key user@laptop\n" + AuthorizedKeysLine(blobA, "sshm-a") + "\nssh-ed25519 AAAAOTHER sshm-agent:sshm-ab\n"
 	ak := filepath.Join(home, ".ssh", "authorized_keys")
 	_ = os.WriteFile(ak, []byte(content), 0o600)
-	out := runLocal(t, home, RemoveScript("sshm-a"))
+	out := runLocal(t, home, RemoveScript(blobA))
 	if !strings.Contains(out, okMarker+" changed") || readAK(t, home) != keep {
 		t.Fatalf("移除 out=%q ak=%q", out, readAK(t, home))
 	}
-	out = runLocal(t, home, RemoveScript("sshm-a"))
+	out = runLocal(t, home, RemoveScript(blobA))
 	if !strings.Contains(out, okMarker+" unchanged") || readAK(t, home) != keep {
 		t.Fatalf("重複移除 out=%q", out)
 	}
 	// 沒有 authorized_keys 也算成功，且不建立檔案
 	empty := t.TempDir()
-	out = runLocal(t, empty, RemoveScript("sshm-a"))
+	out = runLocal(t, empty, RemoveScript(blobA))
 	if !strings.Contains(out, okMarker+" absent") {
 		t.Fatalf("out = %q", out)
 	}
@@ -177,5 +177,24 @@ func TestEnsureKeyGeneratesEd25519(t *testing.T) {
 	removed, err := RemoveKey(p, k.Private)
 	if err != nil || len(removed) != 2 {
 		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+}
+
+// 審查 #3：同別名但不同公鑰的他人行（另一台筆電以相同別名開通、手寫的備份行）必須保留。
+func TestInstallAndRemoveMatchByKeyBlobNotComment(t *testing.T) {
+	home := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)
+	colleague := AuthorizedKeysLine(blobB, "sshm-a")
+	backup := "ssh-ed25519 AAAAYbackup backup key sshm-agent:sshm-a"
+	crlf := "ssh-ed25519 AAAAZcrlf sshm-agent:sshm-a\r"
+	base := "ssh-rsa AAAAB3Nza-user-key user@laptop\n" + colleague + "\n" + backup + "\n" + crlf + "\n"
+	_ = os.WriteFile(filepath.Join(home, ".ssh", "authorized_keys"), []byte(base), 0o600)
+	runLocal(t, home, InstallScript("sshm-a", blobA))
+	if got, want := readAK(t, home), base+AuthorizedKeysLine(blobA, "sshm-a")+"\n"; got != want {
+		t.Fatalf("安裝不得動同別名的他人行：\ngot  %q\nwant %q", got, want)
+	}
+	out := runLocal(t, home, RemoveScript(blobA))
+	if got := readAK(t, home); !strings.Contains(out, okMarker+" changed") || got != base {
+		t.Fatalf("移除只刪本機公鑰那行：out=%q\ngot  %q\nwant %q", out, got, base)
 	}
 }

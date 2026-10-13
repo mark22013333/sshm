@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -260,7 +261,7 @@ func (m *Manager) rollback(ctx context.Context, plan *EnablePlan, cause error, s
 		return fmt.Errorf("%w（這台原本就已開通，開通狀態維持不變）", cause)
 	}
 	var left []string
-	if _, err := runRemote(ctx, m.Remote, plan.Host, plan.User, RemoveScript(plan.Alias)); err != nil {
+	if _, err := runRemote(ctx, m.Remote, plan.Host, plan.User, RemoveScript(plan.Key.TypeBlob)); err != nil {
 		left = append(left, fmt.Sprintf("遠端 %s 的 authorized_keys 仍有行尾為 %s 的公鑰（%v）", plan.User, KeyComment(plan.Alias), err))
 	}
 	if stored {
@@ -290,6 +291,9 @@ type DisablePlan struct {
 	Alias string
 	User  string
 	Key   string
+	// PublicKey 是「類型 base64」，遠端只刪含這把公鑰本體的行。
+	PublicKey   string
+	Fingerprint string
 }
 
 // Summary 是確認畫面的文字。
@@ -298,7 +302,7 @@ func (p *DisablePlan) Summary(paths Paths) []string {
 		fmt.Sprintf("機器：%s（%s:%d）", store.Printable(p.Host.Name), p.Host.Host, effectivePort(p.Host.Port)),
 		"登入帳號：" + p.User,
 		"ssh 別名：" + p.Alias,
-		fmt.Sprintf("遠端：用 sshm 存的密碼登入，從 ~/.ssh/authorized_keys 移除行尾為 %s 的那一行（不動其他行）", KeyComment(p.Alias)),
+		fmt.Sprintf("遠端：用 sshm 存的密碼登入，從 ~/.ssh/authorized_keys 移除這把公鑰（%s）的那一行（以公鑰本體比對，不動其他行）", p.Fingerprint),
 		fmt.Sprintf("本機：從 %s 移除別名區塊、刪除 %s 與 .pub、清除 hosts.json 的開通狀態", paths.Conf, p.Key),
 	}
 }
@@ -313,7 +317,12 @@ func (m *Manager) PrepareDisable(f *store.File, hostID string) (*DisablePlan, er
 	if h.Agent == nil {
 		return nil, fmt.Errorf("「%s」尚未開通給 AI agent", store.Printable(h.Name))
 	}
-	return &DisablePlan{Host: h, Alias: h.Agent.Alias, User: h.AgentUser(), Key: h.Agent.KeyFile}, nil
+	plan := &DisablePlan{Host: h, Alias: h.Agent.Alias, User: h.AgentUser(), Key: h.Agent.KeyFile}
+	// 讀不到公鑰時仍可停用，但遠端那一行無從辨識，DisableRemote 會失敗並讓使用者選擇只清本機
+	if pub, err := os.ReadFile(h.Agent.KeyFile + ".pub"); err == nil {
+		plan.PublicKey, plan.Fingerprint, _ = parsePublicKey(string(pub))
+	}
+	return plan, nil
 }
 
 // DisableRemote 用密碼登入遠端移除公鑰；失敗時呼叫端應詢問是否只清本機。
@@ -322,7 +331,10 @@ func (m *Manager) DisableRemote(ctx context.Context, plan *DisablePlan) (string,
 	if err := CheckEligible(h); err != nil {
 		return "", fmt.Errorf("無法用密碼登入遠端：%w", err)
 	}
-	return runRemote(ctx, m.Remote, h, plan.User, RemoveScript(plan.Alias))
+	if plan.PublicKey == "" {
+		return "", fmt.Errorf("讀不到 %s.pub，無法辨識遠端 authorized_keys 中要移除的那一行", plan.Key)
+	}
+	return runRemote(ctx, m.Remote, h, plan.User, RemoveScript(plan.PublicKey))
 }
 
 // DisableLocal 清除本機狀態：hosts.json 的開通欄位、conf 的別名區塊、金鑰檔。

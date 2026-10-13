@@ -403,8 +403,30 @@ func TestExpectRunnerWithFakeSSH(t *testing.T) {
 	}
 	// 密碼錯誤：失敗且輸出不含密碼
 	h.Password = "wrong-pass"
-	_, err = runRemote(context.Background(), run, h, "helpdesk", RemoveScript("sshm-a"))
+	_, err = runRemote(context.Background(), run, h, "helpdesk", RemoveScript(blobA))
 	if err == nil || strings.Contains(err.Error(), "wrong-pass") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// 公鑰檔遺失時無從辨識遠端那一行：不得猜測（例如改用註解比對），回報錯誤讓使用者決定只清本機。
+func TestDisableRemoteNeedsPublicKey(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	ctx := context.Background()
+	plan, _ := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if _, err := fx.m.Enable(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	ak := filepath.Join(fx.remote.home, ".ssh", "authorized_keys")
+	before, _ := os.ReadFile(ak)
+	if err := os.Rename(plan.Key.Public, plan.Key.Public+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	dp, _ := fx.m.PrepareDisable(fx.file(t), "h_1")
+	if _, err := fx.m.DisableRemote(ctx, dp); err == nil || !strings.Contains(err.Error(), ".pub") {
+		t.Fatalf("err = %v", err)
+	}
+	if after, _ := os.ReadFile(ak); string(after) != string(before) {
+		t.Fatal("無法辨識時不應改動遠端")
 	}
 }
