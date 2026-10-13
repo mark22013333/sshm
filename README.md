@@ -299,7 +299,7 @@ stateDiagram-v2
 ## 已知限制
 
 - **金鑰已登入後仍可能送出密碼（機率極低）**：若已用金鑰登入，而遠端在登入時窗（20 秒）內、你按任何鍵之前，印出指名本次 user@host 的密碼提示，sshm 仍會送出密碼。
-- **密碼以明碼保存**：存在 hosts.json 裡，並以參數傳給 expect 腳本，連線期間同一使用者可用 `ps` 看到。
+- **密碼以明碼保存**：存在 hosts.json 裡。連線時經環境變數 `SSHM_PASSWORD` 交給 expect 腳本（讀完即清除，ssh 與遠端拿不到），不出現在行程參數中；但 expect 行程自己的初始環境在連線期間仍含密碼，同一使用者或 root 讀得到。在 Orca 開新分頁時，`orca terminal create --command=…` 行程存活的短暫期間，其參數仍含密碼。
 - **在 Orca 開新分頁時，密碼會出現在畫面上**：連線指令（含密碼）是打進新分頁 shell 的文字，會顯示在新分頁畫面與 scrollback 裡。
 - **沒開 zsh 的 `HIST_IGNORE_SPACE` 時，連線指令（含密碼）會寫進 shell history**；分頁若是 bash，要另外設定 `HISTCONTROL=ignorespace`。
 - **Orca 可能把 scrollback 存到磁碟**（依 Orca 原始碼推論，未實測），密碼可能因此留在磁碟上。
