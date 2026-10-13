@@ -11,7 +11,9 @@
       "id": "h_demo01", "name": "acme-prod-web", "group": "範例客戶-ACME",
       "host": "10.0.0.11", "port": 22, "user": "deploy",
       "auth": "password", "password": "demo-only", "identityFile": "",
-      "color": "red", "extraArgs": "", "customCommand": ""
+      "color": "red", "extraArgs": "", "customCommand": "",
+      "agent": { "alias": "sshm-acme-prod-web", "keyFile": "__DEMO_HOME__/.ssh/sshm/sshm-acme-prod-web",
+        "installed": [ { "host": "10.0.0.11", "port": 22, "user": "deploy", "fingerprint": "SHA256:demo-only-not-a-real-key" } ] }
     },
     {
       "id": "h_demo02", "name": "acme-prod-db", "group": "範例客戶-ACME",
@@ -59,7 +61,9 @@
       "id": "h_demo09", "name": "qa-sandbox", "group": "測試環境",
       "host": "192.168.1.50", "port": 22, "user": "tester",
       "auth": "password", "password": "demo-only", "identityFile": "",
-      "color": "", "extraArgs": "", "customCommand": ""
+      "color": "", "extraArgs": "", "customCommand": "",
+      "agent": { "alias": "sshm-qa-sandbox", "keyFile": "__DEMO_HOME__/.ssh/sshm/sshm-qa-sandbox",
+        "installed": [ { "host": "192.168.1.50", "port": 22, "user": "tester", "fingerprint": "SHA256:demo-only-not-a-real-key" } ] }
     },
     {
       "id": "h_demo10", "name": "樹莓派-家用", "group": "",
