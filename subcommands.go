@@ -83,11 +83,12 @@ func runImport(args []string, in io.Reader, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
+	before, _ := store.Open(path)
 	if err := transfer.RunImport(path, args[0], in, out); err != nil {
 		return err
 	}
 	// 覆蓋的機器可能改了 host／user／port，已開通的別名跟著更新
-	syncAgentConf(path, errOut)
+	syncAgentConf(path, before, errOut)
 	return nil
 }
 

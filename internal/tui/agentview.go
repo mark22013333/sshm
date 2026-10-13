@@ -198,6 +198,9 @@ func (m *Model) agentRowMark(h *store.Host) string {
 			return "  " + styleWarn.Render(agentMark+" "+h.Agent.Alias+"（別名已停用："+oneLine(problem)+"）")
 		}
 	}
+	if agentaccess.Relocated(*h) {
+		return "  " + styleWarn.Render(agentMark+" "+h.Agent.Alias+"（位置已變更，需重新 enable）")
+	}
 	return "  " + styleInfo.Render(agentMark+" "+h.Agent.Alias)
 }
 
@@ -218,8 +221,8 @@ func (m *Model) syncAgentAfterSave(orig store.Host, editing bool, id string) str
 	if problem := mgr.Paths.ConfProblem(cur); problem != "" {
 		return "；AI agent 別名 " + cur.Agent.Alias + " 已停用（" + oneLine(problem) + "），修正後會自動恢復"
 	}
-	if cur.Host != orig.Host || cur.Port != orig.Port || cur.User != orig.User {
-		return "；AI agent 別名已更新，但新位置尚未安裝公鑰，請執行 sshm agent enable 重新安裝"
+	if cur.Host != orig.Host || cur.Port != orig.Port || cur.User != orig.User || agentaccess.Relocated(cur) {
+		return "；" + agentaccess.RelocatedNotice(cur)
 	}
 	return ""
 }

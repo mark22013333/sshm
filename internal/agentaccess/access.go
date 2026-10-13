@@ -98,6 +98,53 @@ func (m *Manager) verify(ctx context.Context, alias string) error {
 	return nil
 }
 
+// location 是 h 以 user 登入時公鑰所在的遠端位置。
+func location(h store.Host, user, fingerprint string) store.AgentInstall {
+	return store.AgentInstall{Host: h.Host, Port: effectivePort(h.Port), User: user, Fingerprint: fingerprint}
+}
+
+func sameLocation(a, b store.AgentInstall) bool {
+	return strings.EqualFold(a.Host, b.Host) && effectivePort(a.Port) == effectivePort(b.Port) && a.User == b.User
+}
+
+// LocationString 以 user@host:port 顯示位置。
+func LocationString(l store.AgentInstall) string {
+	return fmt.Sprintf("%s@%s:%d", store.Printable(l.User), store.Printable(l.Host), effectivePort(l.Port))
+}
+
+// Relocated 判斷已開通機器目前的 host／port／user 是否不在公鑰安裝過的位置中（需重新 enable）。
+// 沒有安裝紀錄的舊資料無從判斷，回傳 false。
+func Relocated(h store.Host) bool {
+	if h.Agent == nil || len(h.Agent.Installed) == 0 {
+		return false
+	}
+	cur := location(h, h.AgentUser(), "")
+	for _, l := range h.Agent.Installed {
+		if sameLocation(l, cur) {
+			return false
+		}
+	}
+	return true
+}
+
+// RelocatedNotice 是機器位置變動後給使用者的提示。
+func RelocatedNotice(h store.Host) string {
+	return fmt.Sprintf("AI agent 別名 %s 已改指向 %s，需重新 enable 才能使用；舊位置的公鑰會在 disable 時清除",
+		h.Agent.Alias, LocationString(location(h, h.AgentUser(), "")))
+}
+
+// cleanupLocations 是停用時要清的位置：所有安裝紀錄加上目前位置（沒有紀錄的舊資料只有目前位置）。
+func cleanupLocations(h store.Host) []store.AgentInstall {
+	locs := append([]store.AgentInstall(nil), h.Agent.Installed...)
+	cur := location(h, h.AgentUser(), "")
+	for _, l := range locs {
+		if sameLocation(l, cur) {
+			return locs
+		}
+	}
+	return append(locs, cur)
+}
+
 // EnablePlan 是開通前要給使用者確認的內容。
 type EnablePlan struct {
 	Host       store.Host
@@ -230,6 +277,7 @@ func (m *Manager) Enable(ctx context.Context, plan *EnablePlan) (EnableResult, e
 	if plan.UserSet {
 		agent.User = plan.User
 	}
+	here := location(plan.Host, plan.User, plan.Key.Fingerprint)
 	f, err := store.Update(m.HostsPath, func(f *store.File) error {
 		i := f.HostIndex(plan.Host.ID)
 		if i < 0 {
@@ -239,6 +287,15 @@ func (m *Manager) Enable(ctx context.Context, plan *EnablePlan) (EnableResult, e
 		if cur.Host != plan.Host.Host || effectivePort(cur.Port) != effectivePort(plan.Host.Port) || cur.User != plan.Host.User {
 			return errors.New("機器的 host／port／user 在開通期間被其他 sshm 修改")
 		}
+		// 保留先前的安裝位置（重新開通到新位置時，舊位置留待停用時清除）
+		if cur.Agent != nil {
+			for _, l := range cur.Agent.Installed {
+				if !sameLocation(l, here) {
+					agent.Installed = append(agent.Installed, l)
+				}
+			}
+		}
+		agent.Installed = append(agent.Installed, here)
 		if other := TakenAliases(f, cur.ID); other[plan.Alias] {
 			return fmt.Errorf("別名 %s 在開通期間被其他機器使用", plan.Alias)
 		}
@@ -305,6 +362,8 @@ type DisablePlan struct {
 	Alias string
 	User  string
 	Key   string
+	// Locations 是要清除公鑰的遠端位置（安裝紀錄加上目前位置）。
+	Locations []store.AgentInstall
 	// PublicKey 是「類型 base64」，遠端只刪含這把公鑰本體的行。
 	PublicKey   string
 	Fingerprint string
@@ -317,8 +376,22 @@ func (p *DisablePlan) Summary(paths Paths) []string {
 		"登入帳號：" + p.User,
 		"ssh 別名：" + p.Alias,
 		fmt.Sprintf("遠端：用 sshm 存的密碼登入，從 ~/.ssh/authorized_keys 移除這把公鑰（%s）的那一行（以公鑰本體比對，不動其他行）", p.Fingerprint),
+		"      位置：" + p.locationList(),
 		fmt.Sprintf("本機：從 %s 移除別名區塊、刪除 %s 與 .pub、清除 hosts.json 的開通狀態", paths.Conf, p.Key),
 	}
+}
+
+func (p *DisablePlan) locationList() string {
+	cur := location(p.Host, p.User, "")
+	var parts []string
+	for _, l := range p.Locations {
+		label := "（舊位置）"
+		if sameLocation(l, cur) {
+			label = "（目前位置）"
+		}
+		parts = append(parts, LocationString(l)+label)
+	}
+	return strings.Join(parts, "、")
 }
 
 // PrepareDisable 取得停用計畫。
@@ -331,7 +404,7 @@ func (m *Manager) PrepareDisable(f *store.File, hostID string) (*DisablePlan, er
 	if h.Agent == nil {
 		return nil, fmt.Errorf("「%s」尚未開通給 AI agent", store.Printable(h.Name))
 	}
-	plan := &DisablePlan{Host: h, Alias: h.Agent.Alias, User: h.AgentUser(), Key: h.Agent.KeyFile}
+	plan := &DisablePlan{Host: h, Alias: h.Agent.Alias, User: h.AgentUser(), Key: h.Agent.KeyFile, Locations: cleanupLocations(h)}
 	// 讀不到公鑰時仍可停用，但遠端那一行無從辨識，DisableRemote 會失敗並讓使用者選擇只清本機
 	if pub, err := os.ReadFile(h.Agent.KeyFile + ".pub"); err == nil {
 		plan.PublicKey, plan.Fingerprint, _ = parsePublicKey(string(pub))
@@ -339,7 +412,8 @@ func (m *Manager) PrepareDisable(f *store.File, hostID string) (*DisablePlan, er
 	return plan, nil
 }
 
-// DisableRemote 用密碼登入遠端移除公鑰；失敗時呼叫端應詢問是否只清本機。
+// DisableRemote 用密碼逐一登入每個安裝位置移除公鑰（舊位置用同一組密碼試一次）；
+// 任一位置失敗就回報是哪些位置，呼叫端應詢問是否只清本機。
 func (m *Manager) DisableRemote(ctx context.Context, plan *DisablePlan) (string, error) {
 	h := plan.Host
 	if err := CheckEligible(h); err != nil {
@@ -348,7 +422,23 @@ func (m *Manager) DisableRemote(ctx context.Context, plan *DisablePlan) (string,
 	if plan.PublicKey == "" {
 		return "", fmt.Errorf("讀不到 %s.pub，無法辨識遠端 authorized_keys 中要移除的那一行", plan.Key)
 	}
-	return runRemote(ctx, m.Remote, h, plan.User, RemoveScript(plan.PublicKey))
+	status := "unchanged"
+	var errs []error
+	for _, l := range plan.Locations {
+		at := h
+		at.Host, at.Port = l.Host, l.Port
+		st, err := runRemote(ctx, m.Remote, at, l.User, RemoveScript(plan.PublicKey))
+		switch {
+		case err != nil:
+			errs = append(errs, fmt.Errorf("%s：%w", LocationString(l), err))
+		case st == "changed":
+			status = st
+		}
+	}
+	if len(errs) > 0 {
+		return "", errors.Join(errs...)
+	}
+	return status, nil
 }
 
 // DisableLocal 清除本機狀態：hosts.json 的開通欄位、conf 的別名區塊、金鑰檔。

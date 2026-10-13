@@ -13,7 +13,17 @@ type AgentAccess struct {
 	// User 空字串代表沿用機器的 user（機器改 user 時別名跟著改）。
 	User    string `json:"user,omitempty"`
 	KeyFile string `json:"keyFile"`
-	Extra   Extra  `json:"-"`
+	// Installed 是公鑰實際裝過的遠端位置；機器改了 host／port／user 後，停用時要連舊位置一起清除。
+	Installed []AgentInstall `json:"installed,omitempty"`
+	Extra     Extra          `json:"-"`
+}
+
+// AgentInstall 是一次開通把公鑰裝到的遠端位置。
+type AgentInstall struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	User        string `json:"user"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 func (a *AgentAccess) UnmarshalJSON(b []byte) error {
@@ -62,6 +72,12 @@ func ValidateAgent(a AgentAccess) error {
 	}
 	if a.User != "" && (strings.HasPrefix(a.User, "-") || strings.ContainsAny(a.User, "@: \t\"")) {
 		return errors.New("AI agent 登入帳號不可以 - 開頭，也不可包含 @、:、引號或空白")
+	}
+	for _, in := range a.Installed {
+		if hasControl(in.Host) || hasControl(in.User) || hasControl(in.Fingerprint) ||
+			strings.HasPrefix(in.Host, "-") || strings.HasPrefix(in.User, "-") || in.Port < 0 || in.Port > 65535 {
+			return errors.New("AI agent 的公鑰安裝位置紀錄不合法")
+		}
 	}
 	return nil
 }

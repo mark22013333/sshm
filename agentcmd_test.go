@@ -271,6 +271,9 @@ func TestImportResyncsAgentConf(t *testing.T) {
 	if !strings.Contains(string(conf), "HostName 10.0.0.88") || !strings.Contains(string(conf), "Port 2200") {
 		t.Fatalf("匯入改了 host 後 conf 應更新：%s", conf)
 	}
+	if msg := errOut.String(); !strings.Contains(msg, "需重新 enable") || !strings.Contains(msg, "舊位置的公鑰會在 disable 時清除") {
+		t.Fatalf("匯入改了位置應提示重新 enable：%q", msg)
+	}
 }
 
 // 審查 #2 的端對端情境：已開通後 import 把 user 改成 o'brien。別名停用、整份 ssh 設定仍可解析，且停用狀態看得到。

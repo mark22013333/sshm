@@ -3,6 +3,7 @@ package agentaccess
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -464,5 +465,156 @@ func TestPrepareRejectsUnsafeUserFlag(t *testing.T) {
 		if _, err := fx.m.PrepareEnable(context.Background(), fx.file(t), "h_1", "", u); err == nil {
 			t.Errorf("--user %q 應拒絕", u)
 		}
+	}
+}
+
+// locRemote 依「帳號@主機:埠」各給一個遠端家目錄，模擬機器搬家前後的兩個位置。
+type locRemote struct {
+	t     *testing.T
+	homes map[string]string
+	fail  map[string]bool
+	calls []string
+}
+
+func (r *locRemote) home(loc string) string {
+	if r.homes[loc] == "" {
+		r.homes[loc] = r.t.TempDir()
+	}
+	return r.homes[loc]
+}
+
+func (r *locRemote) run(_ context.Context, h store.Host, user, script string) (string, error) {
+	loc := fmt.Sprintf("%s@%s:%d", user, h.Host, effectivePort(h.Port))
+	r.calls = append(r.calls, loc)
+	if r.fail[loc] {
+		return "ssh: connect to host " + h.Host + ": Connection timed out", errors.New("逾時")
+	}
+	cmd := exec.Command("/bin/sh", "-c", RemoteCommand(script))
+	cmd.Env = append(os.Environ(), "HOME="+r.home(loc))
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func (r *locRemote) ak(loc string) string {
+	data, _ := os.ReadFile(filepath.Join(r.home(loc), ".ssh", "authorized_keys"))
+	return string(data)
+}
+
+func moveHost(t *testing.T, fx *fixture, host string, port int, user string) {
+	t.Helper()
+	if _, err := store.Update(fx.path, func(f *store.File) error {
+		f.Hosts[0].Host, f.Hosts[0].Port, f.Hosts[0].User = host, port, user
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 審查 #5：開通後改了 host／user，disable 要同時清掉舊位置與新位置的公鑰。
+func TestDisableCleansOldAndNewLocations(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	r := &locRemote{t: t, homes: map[string]string{}, fail: map[string]bool{}}
+	fx.m.Remote = r.run
+	ctx := context.Background()
+	plan, _ := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if _, err := fx.m.Enable(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	oldLoc, newLoc := "helpdesk@10.0.0.24:2222", "ops@10.0.0.99:22"
+	if !strings.Contains(r.ak(oldLoc), plan.Key.TypeBlob) {
+		t.Fatal("舊位置應已安裝公鑰")
+	}
+	moveHost(t, fx, "10.0.0.99", 22, "ops")
+	// 新位置重新開通
+	plan2, err := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.Enable(ctx, plan2); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.ak(newLoc), plan.Key.TypeBlob) {
+		t.Fatal("新位置應已安裝公鑰")
+	}
+	dp, err := fx.m.PrepareDisable(fx.file(t), "h_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := strings.Join(dp.Summary(fx.m.Paths), "\n"); !strings.Contains(s, oldLoc) || !strings.Contains(s, newLoc) {
+		t.Fatalf("停用確認應列出兩個位置：\n%s", s)
+	}
+	if _, err := fx.m.DisableRemote(ctx, dp); err != nil {
+		t.Fatal(err)
+	}
+	for _, loc := range []string{oldLoc, newLoc} {
+		if strings.Contains(r.ak(loc), plan.Key.TypeBlob) {
+			t.Errorf("%s 的公鑰應已清除：%q", loc, r.ak(loc))
+		}
+	}
+}
+
+// 改了位置但沒重新開通就停用：舊位置照樣清除，新位置沒裝過也不算失敗。
+func TestDisableAfterMoveWithoutReenable(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	r := &locRemote{t: t, homes: map[string]string{}, fail: map[string]bool{}}
+	fx.m.Remote = r.run
+	ctx := context.Background()
+	plan, _ := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if _, err := fx.m.Enable(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	moveHost(t, fx, "10.0.0.99", 2222, "helpdesk")
+	dp, _ := fx.m.PrepareDisable(fx.file(t), "h_1")
+	if _, err := fx.m.DisableRemote(ctx, dp); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(r.ak("helpdesk@10.0.0.24:2222"), plan.Key.TypeBlob) {
+		t.Fatal("舊位置的公鑰應已清除")
+	}
+	// 舊位置連不到：回報哪個位置失敗，交給使用者決定是否只清本機
+	fx2 := newFixture(t, pwHost())
+	r2 := &locRemote{t: t, homes: map[string]string{}, fail: map[string]bool{}}
+	fx2.m.Remote = r2.run
+	plan, _ = fx2.m.PrepareEnable(ctx, fx2.file(t), "h_1", "", "")
+	if _, err := fx2.m.Enable(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	moveHost(t, fx2, "10.0.0.99", 2222, "helpdesk")
+	r2.fail["helpdesk@10.0.0.24:2222"] = true
+	dp, _ = fx2.m.PrepareDisable(fx2.file(t), "h_1")
+	_, err := fx2.m.DisableRemote(ctx, dp)
+	var re *RemoteError
+	if !errors.As(err, &re) || !strings.Contains(err.Error(), "10.0.0.24") {
+		t.Fatalf("應回報舊位置失敗：%v", err)
+	}
+}
+
+func TestEnableRecordsInstallLocation(t *testing.T) {
+	fx := newFixture(t, pwHost())
+	r := &locRemote{t: t, homes: map[string]string{}, fail: map[string]bool{}}
+	fx.m.Remote = r.run
+	ctx := context.Background()
+	plan, _ := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if _, err := fx.m.Enable(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	want := store.AgentInstall{Host: "10.0.0.24", Port: 2222, User: "helpdesk", Fingerprint: plan.Key.Fingerprint}
+	if got := fx.file(t).Hosts[0].Agent.Installed; len(got) != 1 || got[0] != want {
+		t.Fatalf("installed = %+v", got)
+	}
+	if Relocated(fx.file(t).Hosts[0]) {
+		t.Fatal("未搬家不應判定為位置變更")
+	}
+	moveHost(t, fx, "10.0.0.99", 2222, "helpdesk")
+	if !Relocated(fx.file(t).Hosts[0]) {
+		t.Fatal("改了 host 應判定為位置變更")
+	}
+	// 重新開通到新位置：兩個位置都記錄
+	plan2, _ := fx.m.PrepareEnable(ctx, fx.file(t), "h_1", "", "")
+	if _, err := fx.m.Enable(ctx, plan2); err != nil {
+		t.Fatal(err)
+	}
+	if got := fx.file(t).Hosts[0].Agent.Installed; len(got) != 2 || got[0].Host != "10.0.0.24" || got[1].Host != "10.0.0.99" {
+		t.Fatalf("installed = %+v", got)
 	}
 }

@@ -210,8 +210,11 @@ func TestEditHostResyncsAgentConf(t *testing.T) {
 	if !strings.Contains(string(conf), "HostName 10.0.0.99") {
 		t.Fatalf("conf 應跟著更新：%s", conf)
 	}
-	if !strings.Contains(a.m.status, "尚未安裝公鑰") {
-		t.Fatalf("應提醒新位置尚未安裝公鑰：%q", a.m.status)
+	if !strings.Contains(a.m.status, "需重新 enable") || !strings.Contains(a.m.status, "舊位置的公鑰會在 disable 時清除") {
+		t.Fatalf("應提醒需重新 enable 與舊位置清除：%q", a.m.status)
+	}
+	if view := a.m.View(); !strings.Contains(view, "位置已變更，需重新 enable") {
+		t.Fatalf("清單應標示需重新 enable：\n%s", view)
 	}
 	if h := a.saved(t); h.Agent == nil {
 		t.Fatal("編輯不應清掉開通狀態")

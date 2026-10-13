@@ -273,11 +273,27 @@ func runAgentDisable(args []string, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-// syncAgentConf 在 hosts.json 被改動後重新產生別名設定（機器改了 host／user／port 時別名跟著更新）。
-func syncAgentConf(path string, errOut io.Writer) {
+// syncAgentConf 在 hosts.json 被改動後重新產生別名設定（機器改了 host／user／port 時別名跟著更新）；
+// before 是改動前的資料，用來找出位置變動、需要重新開通的機器。
+func syncAgentConf(path string, before *store.File, errOut io.Writer) {
 	f, err := store.Open(path)
 	if err != nil {
 		return
+	}
+	for _, h := range f.Hosts {
+		if h.Agent == nil {
+			continue
+		}
+		moved := agentaccess.Relocated(h)
+		if before != nil {
+			if i := before.HostIndex(h.ID); i >= 0 {
+				o := before.Hosts[i]
+				moved = moved || o.Host != h.Host || o.Port != h.Port || o.AgentUser() != h.AgentUser()
+			}
+		}
+		if moved {
+			fmt.Fprintf(errOut, "sshm：「%s」%s\n", store.Printable(h.Name), agentaccess.RelocatedNotice(h))
+		}
 	}
 	p, err := agentaccess.DefaultPaths()
 	var skipped []string
