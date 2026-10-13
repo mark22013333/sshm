@@ -10,8 +10,10 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mark22013333/sshm/internal/agentaccess"
 	"github.com/mark22013333/sshm/internal/connect"
 	"github.com/mark22013333/sshm/internal/launch"
+	"github.com/mark22013333/sshm/internal/selfupdate"
 	"github.com/mark22013333/sshm/internal/store"
 	"github.com/mark22013333/sshm/internal/tui"
 	"github.com/mark22013333/sshm/internal/zshwidget"
@@ -120,12 +122,20 @@ func runTUI(query string, startAdd bool) error {
 	orca, inOrca := connect.DetectOrca(os.Getenv)
 	// 取不到時 Ctrl+O 只顯示錯誤，不影響其他功能
 	agent, _ := newAgentManager(path)
+	// 每天最多查一次 GitHub 最新版，結果快取在設定目錄
+	updater := selfupdate.New(versionString(), filepath.Join(filepath.Dir(path), "update-check.json"))
+	about := tui.AboutPaths{Exe: updater.ExePath}
+	if p, err := agentaccess.DefaultPaths(); err == nil {
+		about.AgentConf, about.KeyDir = p.Conf, p.KeyDir
+	}
 	m := tui.New(tui.Options{
 		Path: path, File: file, ScriptPath: script,
 		Query: query, StartAdd: startAdd,
 		Orca: orca, InOrca: inOrca,
 		StatePath: filepath.Join(filepath.Dir(path), "state.json"),
 		Agent:     agent,
+		Update:    updater,
+		About:     about,
 	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		return err

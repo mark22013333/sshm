@@ -25,7 +25,7 @@ sshm zsh-widget >> ~/.zshrc
 source ~/.zshrc
 ```
 
-確認版本：`sshm --version`。升級時重跑步驟 1 即可。
+確認版本：`sshm --version`。升級可在 TUI 的「關於」頁按 U（見「關於頁與更新」），或重跑步驟 1。
 
 > 請用上面的 `curl` 安裝。若改用瀏覽器下載壓縮檔，macOS 會因執行檔未經 Apple 簽章而擋下，需要先執行 `xattr -d com.apple.quarantine sshm`。
 
@@ -60,13 +60,13 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 
 | 鍵 | 動作 |
 |----|------|
-| ↑↓ | 移動 |
+| ↑↓ | 移動（PgUp／PgDn 一次 10 列） |
 | Enter | 在目前的 terminal 原地連線 |
 | Shift+Enter／Ctrl+T | 在 Orca 中開新分頁連線，不在 Orca 時改為原地連線（Orca 把 Shift+Enter 送成 ESC+Enter，等同 Alt+Enter；Cmd+Enter 不會送進 terminal，無效） |
 | ←→ | 折疊／展開群組 |
 | Ctrl+N／Ctrl+E／Ctrl+D／Ctrl+X | 新增／編輯／複製／刪除（刪除要按 y 確認；已開通給 AI agent 的要先停用） |
 | Ctrl+O | 開通／停用選取機器的 AI agent 存取（見「給 AI agent 使用」，要按 y 確認） |
-| Tab | 切換「機器」「Tunnel」頁 |
+| Tab | 切到下一頁（「機器」→「Tunnel」→「關於」輪流） |
 | Esc | 清空搜尋，再按一次離開 |
 
 Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必填：名稱、host、user；認證方式與顏色用 ←→ 切換，認證方式為 password 時按 Ctrl+R 可切換顯示／隱藏密碼，Ctrl+S 儲存、Esc 取消：
@@ -87,7 +87,7 @@ Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必
 | Enter | 啟動／停止 |
 | Ctrl+G | 前往分頁（讓 Orca 切到這條 tunnel 執行中的分頁） |
 | Ctrl+N／Ctrl+E／Ctrl+X | 新增／編輯／刪除（刪除要按 y 確認；有執行紀錄的要先停止） |
-| Tab | 回「機器」頁 |
+| Tab | 切到「關於」頁 |
 | Esc | 離開 |
 
 - 每列顯示狀態燈（● 執行中、○ 已停止、◌ 無法確認）、名稱、機器名稱與規則摘要（例 `L 13306→127.0.0.1:3306`、`D 1080`）。
@@ -103,6 +103,26 @@ Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必
 
 - 刪除機器時，若有 tunnel 引用它，確認訊息會列出這些 tunnel；刪除後 tunnel 設定保留，但啟動時會顯示「機器已不存在」，請編輯改指另一台機器。這種 tunnel 在 `sshm export` 時不會匯出，結果會列出名稱。
 - IPv6 位址可以不加中括號；要加的話必須成對（`[::1]`）。
+
+## 關於頁與更新
+
+在「Tunnel」頁再按一次 Tab 進入「關於」頁，內容超過畫面時用 ↑↓／PgUp／PgDn 捲動：
+
+- **版本**：目前版本、GitHub 上的最新版本、能否自動更新；不能時附上手動指令。
+- **檔案位置**：hosts.json、`~/.ssh/sshm_agents.conf`、`~/.ssh/sshm/` 金鑰目錄、執行檔（皆為解析 symlink 後的實際路徑）。
+- **快捷鍵一覽**：機器頁、Tunnel 頁、機器表單、關於頁。
+- **AI agent 用法摘要**與 GitHub 網址。
+
+更新檢查與更新：
+
+- sshm 啟動時在背景查 GitHub 的最新釋出版（不影響啟動速度），一天最多查一次，結果記在 `~/.config/sshm/update-check.json`。查詢失敗（例如離線）不會顯示任何訊息，也算當天查過。
+- 有新版時，機器頁的狀態列會提示「有新版 vX.Y.Z，到「關於」按 U 更新」。
+- 在「關於」頁按 **U**：下載這台 Mac 對應的 `sshm_darwin_<arm64|amd64>.tar.gz` 與 `checksums.txt`，SHA-256 相符才解出 `sshm`，寫到執行檔同目錄的暫存檔、沿用原權限後一次 rename 取代（透過 symlink 執行時取代的是連結目標）。完成後提示「已更新為 vX.Y.Z，請重開 sshm」。下載中斷、校驗不符或任何一步失敗，原執行檔都不會被改動。
+- 只連 GitHub 官方網域（`api.github.com`、`github.com` 與 GitHub 的下載網域），每一次 redirect 都會檢查；下載有大小上限與逾時。
+- 以下情況不自動更新，「關於」頁會改列手動做法：
+  - 開發版（在原始碼目錄 `go build`／`go install` 得到的 `(devel)`、pseudo-version 等非正式版號）：用 `go install github.com/mark22013333/sshm@latest`。以 `go install …@latest` 安裝的版本號是正式版號，可以直接按 U 更新（會換成 GitHub 釋出版的執行檔）。
+  - 執行檔所在目錄沒有寫入權限：列出對應目錄的 `curl … | tar xz -C <目錄> sshm` 指令，sshm 不會嘗試 sudo。
+  - 不是 macOS（Apple Silicon／Intel）。
 
 ## 從 iTerm2 匯入
 
