@@ -1,0 +1,29 @@
+#!/bin/bash
+# 假 ssh：印出目標格式的密碼提示，核對 FAKE_SSH_PASSWORD 後在本機執行 -o RemoteCommand=… 的內容。
+# 測試會把 HOME 指到臨時目錄，模擬遠端帳號的家目錄。
+cmd=""
+dest=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-o)
+		case "$2" in RemoteCommand=*) cmd="${2#RemoteCommand=}" ;; esac
+		echo "OPT $2" | grep -v RemoteCommand
+		shift 2
+		;;
+	-p) shift 2 ;;
+	--)
+		dest="$2"
+		shift 2
+		;;
+	*) shift ;;
+	esac
+done
+printf "%s's password: " "$dest"
+read -rs pw
+echo
+if [ "$pw" != "$FAKE_SSH_PASSWORD" ]; then
+	echo "Permission denied, please try again."
+	exit 255
+fi
+echo "LOGGED_IN $dest"
+exec /bin/sh -c "$cmd"

@@ -192,3 +192,11 @@ func tunnelEpilogue() string {
 	n := strconv.Itoa(TunnelCloseDelay)
 	return `; sshm_rc=$?; printf '\n%s\n' "Tunnel 已結束（代碼 ${sshm_rc}），` + n + ` 秒後關閉此分頁"; sleep ` + n + `; exit "$sshm_rc"`
 }
+
+// PasswordLoginArgv 組出以 expect 腳本自動輸入密碼的 argv，extra 接在 ssh 參數中（供 sshm agent 安裝公鑰）。
+func PasswordLoginArgv(h store.Host, scriptPath string, extra []string) ([]string, error) {
+	if h.Auth != store.AuthPassword {
+		return nil, errors.New("只支援密碼認證的機器")
+	}
+	return build(h, scriptPath, extra)
+}
