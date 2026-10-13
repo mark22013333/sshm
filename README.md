@@ -117,7 +117,9 @@ Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必
 
 - sshm 啟動時在背景查 GitHub 的最新釋出版（不影響啟動速度），一天最多查一次，結果記在 `~/.config/sshm/update-check.json`。查詢失敗（例如離線）不會顯示任何訊息，也算當天查過。
 - 有新版時，機器頁的狀態列會提示「有新版 vX.Y.Z，到「關於」按 U 更新」。
-- 在「關於」頁按 **U**：下載這台 Mac 對應的 `sshm_darwin_<arm64|amd64>.tar.gz` 與 `checksums.txt`，SHA-256 相符才解出 `sshm`，寫到執行檔同目錄的暫存檔、沿用原權限後一次 rename 取代（透過 symlink 執行時取代的是連結目標）。完成後提示「已更新為 vX.Y.Z，請重開 sshm」。下載中斷、校驗不符或任何一步失敗，原執行檔都不會被改動。
+- 在「關於」頁按 **U**：下載這台 Mac 對應的 `sshm_darwin_<arm64|amd64>.tar.gz` 與 `checksums.txt`，SHA-256 相符才解出 `sshm`，寫到執行檔同目錄的暫存檔、沿用原權限後一次 rename 取代（透過 symlink 執行時取代的是連結目標）。完成後提示「已更新為 vX.Y.Z，請重開 sshm」。下載中斷、校驗不符或任何一步失敗，原執行檔都不會被改動。更新途中被強制結束而留在執行檔目錄的 `.sshm-update-<數字>` 暫存檔，會在下次啟動或下次更新時清掉（只清超過 10 分鐘、名稱相符的一般檔案）。
+- 替換後的執行檔沿用原本的權限位元，但擁有者是執行更新的使用者。多人共用、群組可寫的安裝目錄裡，由別人更新後檔案擁有者會改變；在意的話請改用手動安裝。
+- SHA-256 比對的界線：`checksums.txt` 與壓縮檔來自同一個 GitHub Release，比對只能確認下載過程沒有損壞或被截斷，**無法**防止 Release 本身或 GitHub 帳號被竄改（竄改者可以同時換掉兩者）。sshm 目前沒有簽章驗證，自動更新的可信度等同於這個 GitHub repo 的可信度。
 - 只連 GitHub 官方網域（`api.github.com`、`github.com` 與 GitHub 的下載網域），每一次 redirect 都會檢查；下載有大小上限與逾時。
 - 以下情況不自動更新，「關於」頁會改列手動做法：
   - 開發版（在原始碼目錄 `go build`／`go install` 得到的 `(devel)`、pseudo-version 等非正式版號）：用 `go install github.com/mark22013333/sshm@latest`。以 `go install …@latest` 安裝的版本號是正式版號，可以直接按 U 更新（會換成 GitHub 釋出版的執行檔）。
