@@ -45,6 +45,8 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlT}
 	case "ctrl+g":
 		return tea.KeyMsg{Type: tea.KeyCtrlG}
+	case "ctrl+o":
+		return tea.KeyMsg{Type: tea.KeyCtrlO}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
@@ -167,7 +169,7 @@ func TestShiftEnterOpensOrcaTab(t *testing.T) {
 		t.Fatal("successful orca create should quit")
 	}
 	want := []string{"/orca/orca", "terminal", "create", "--worktree", "active", "--title=🔴 alpha",
-		"--command= /cfg/sshm-login.exp 22 root 10.0.0.1 'pw 1'", "--focus", "--json"}
+		"--command= SSHM_PASSWORD='pw 1' /cfg/sshm-login.exp 22 root 10.0.0.1", "--focus", "--json"}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("argv = %q", got)
 	}
@@ -286,5 +288,19 @@ func TestTunnelPageReadOnlyOutsideOrca(t *testing.T) {
 	send(t, m, "tab")
 	if m.page != pageHosts {
 		t.Fatal("tab should switch back")
+	}
+}
+
+// 原地連線密碼機器：密碼只經 ExecEnv 交給 expect，不在 argv（審查 #4）。
+func TestEnterExecPasswordViaEnv(t *testing.T) {
+	m := New(Options{Path: filepath.Join(t.TempDir(), "h.json"), File: sampleFile(), Query: "alpha", ScriptPath: "/cfg/sshm-login.exp"})
+	if !isQuit(send(t, m, "enter")) {
+		t.Fatal("enter 應原地連線")
+	}
+	if got := strings.Join(m.Result().ExecArgv, " "); got != "/cfg/sshm-login.exp 22 root 10.0.0.1" {
+		t.Fatalf("exec argv = %q", got)
+	}
+	if env := m.Result().ExecEnv; len(env) != 1 || env[0] != "SSHM_PASSWORD=pw 1" {
+		t.Fatalf("exec env = %q", env)
 	}
 }

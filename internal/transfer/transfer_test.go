@@ -370,3 +370,36 @@ func TestExportSkipsOrphanTunnels(t *testing.T) {
 		t.Fatalf("匯出檔應能匯回：%v", err)
 	}
 }
+
+func TestAgentStateIsLocalOnly(t *testing.T) {
+	path, dir := seed(t)
+	if _, err := store.Update(path, func(f *store.File) error {
+		return f.SetAgent("h_a", &store.AgentAccess{Alias: "sshm-alpha", KeyFile: "/k/sshm-alpha"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "out.json")
+	if _, err := Export(path, dest, ExportOptions{WithPasswords: true}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(dest)
+	if strings.Contains(string(data), "sshm-alpha") || strings.Contains(string(data), `"agent"`) {
+		t.Fatalf("匯出不應帶 AI agent 開通狀態：%s", data)
+	}
+	// 匯入檔帶 agent：忽略；覆蓋既有機器時保留本機的開通狀態
+	src := writeJSON(t, dir, `{"hosts":[
+	  {"id":"h_a","name":"alpha-new","group":"G","host":"10.0.0.1","port":22,"user":"root","auth":"password","password":"pw-a","agent":{"alias":"sshm-evil","keyFile":"/evil"}},
+	  {"id":"h_n","name":"new","host":"10.0.0.9","port":22,"user":"u","auth":"none","agent":{"alias":"sshm-new","keyFile":"/x"}}]}`)
+	var out bytes.Buffer
+	if err := RunImport(path, src, strings.NewReader("y\n"), &out); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := store.Open(path)
+	a := f.Hosts[f.HostIndex("h_a")]
+	if a.Name != "alpha-new" || a.Agent == nil || a.Agent.Alias != "sshm-alpha" {
+		t.Fatalf("覆蓋後開通狀態 = %+v", a.Agent)
+	}
+	if n := f.Hosts[f.HostIndex("h_n")]; n.Agent != nil {
+		t.Fatalf("新匯入的機器不應帶開通狀態：%+v", n.Agent)
+	}
+}

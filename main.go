@@ -28,6 +28,9 @@ const usage = `用法：
   sshm export [--with-passwords] [--force] <檔案>
                        匯出 JSON（預設不含密碼；目的檔已存在時需 --force）
   sshm import <檔案>   匯入 JSON（同 id 且內容不同的項目先列出差異再確認）
+  sshm agent list [--json] | enable <機器名稱> | disable <機器名稱> | guide
+                       把機器開通給 AI agent（專用金鑰＋ssh 別名，agent 不會拿到密碼）；
+                       詳見 sshm agent --help
   sshm --version       顯示版本
 `
 
@@ -67,7 +70,7 @@ func parseArgs(args []string) command {
 		return command{name: "help"}
 	case "-v", "--version", "version":
 		return command{name: "version"}
-	case "zsh-widget", "add", "import-iterm", "export", "import":
+	case "zsh-widget", "add", "import-iterm", "export", "import", "agent":
 		return command{name: args[0], args: args[1:]}
 	}
 	return command{name: "tui", query: strings.Join(args, " ")}
@@ -90,7 +93,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "export":
 		return report(stderr, runExport(cmd.args, stdout))
 	case "import":
-		return report(stderr, runImport(cmd.args, os.Stdin, stdout))
+		return report(stderr, runImport(cmd.args, os.Stdin, stdout, stderr))
+	case "agent":
+		return report(stderr, runAgent(cmd.args, os.Stdin, stdout))
 	}
 	if err := runTUI(cmd.query, cmd.name == "add"); err != nil {
 		fmt.Fprintln(stderr, "sshm：", err)
@@ -113,17 +118,20 @@ func runTUI(query string, startAdd bool) error {
 		return fmt.Errorf("寫出 expect 登入腳本失敗：%w", err)
 	}
 	orca, inOrca := connect.DetectOrca(os.Getenv)
+	// 取不到時 Ctrl+O 只顯示錯誤，不影響其他功能
+	agent, _ := newAgentManager(path)
 	m := tui.New(tui.Options{
 		Path: path, File: file, ScriptPath: script,
 		Query: query, StartAdd: startAdd,
 		Orca: orca, InOrca: inOrca,
 		StatePath: filepath.Join(filepath.Dir(path), "state.json"),
+		Agent:     agent,
 	})
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		return err
 	}
 	if argv := m.Result().ExecArgv; len(argv) > 0 {
-		return launch.Exec(argv)
+		return launch.Exec(argv, m.Result().ExecEnv)
 	}
 	return nil
 }

@@ -13,11 +13,16 @@ import (
 
 // Plan 是一次連線要執行的東西。
 type Plan struct {
-	// Argv 供 syscall.Exec 原地執行。
+	// Argv 供 syscall.Exec 原地執行；不含密碼。
 	Argv []string
-	// Text 是打進 shell 的一行文字（開頭有空白），供 Orca --command 使用。
+	// Env 是執行 Argv 時要額外加入的環境變數（密碼經此交給 expect，不放 argv）。
+	Env []string
+	// Text 是打進 shell 的一行文字（開頭有空白），供 Orca --command 使用；密碼以前置變數指定，不成為參數。
 	Text string
 }
+
+// PasswordEnv 是把密碼交給 expect 登入腳本的環境變數名；腳本讀到後立刻 unset，不傳給 ssh。
+const PasswordEnv = "SSHM_PASSWORD"
 
 const defaultPort = 22
 
@@ -66,19 +71,35 @@ func validate(h store.Host) error {
 	return nil
 }
 
-// build 依認證方式組 argv；extra 會接在 ssh 參數中（password 時交給 expect 腳本轉傳）。
-func build(h store.Host, scriptPath string, extra []string) ([]string, error) {
+// build 依認證方式組 argv 與額外環境變數；extra 會接在 ssh 參數中（password 時交給 expect 腳本轉傳）。
+// 密碼只放環境變數：argv 對同機其他使用者可見（ps -ww），環境變數只有同一使用者與 root 讀得到。
+func build(h store.Host, scriptPath string, extra []string) ([]string, []string, error) {
 	if err := validate(h); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if h.Auth == store.AuthPassword {
 		if scriptPath == "" {
-			return nil, errors.New("找不到 expect 登入腳本")
+			return nil, nil, errors.New("找不到 expect 登入腳本")
 		}
-		argv := []string{scriptPath, strconv.Itoa(port(h)), h.User, h.Host, h.Password}
-		return append(argv, extra...), nil
+		argv := []string{scriptPath, strconv.Itoa(port(h)), h.User, h.Host}
+		return append(argv, extra...), []string{PasswordEnv + "=" + h.Password}, nil
 	}
-	return sshArgs(h, extra)
+	argv, err := sshArgs(h, extra)
+	return argv, nil, err
+}
+
+// planFor 組出 Plan；Text 以「VAR=值 指令」前置環境變數，shell 不會把它變成參數。
+func planFor(argv, env []string) Plan {
+	text := ShellText(argv)
+	if len(env) > 0 {
+		prefix := make([]string, len(env))
+		for i, e := range env {
+			k, v, _ := strings.Cut(e, "=")
+			prefix[i] = k + "=" + Quote(v)
+		}
+		text = " " + strings.Join(prefix, " ") + text
+	}
+	return Plan{Argv: argv, Env: env, Text: text}
 }
 
 // HostPlan 組出連線到機器的指令；customCommand 非空時整個取代。
@@ -93,11 +114,11 @@ func HostPlan(h store.Host, scriptPath string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	argv, err := build(h, scriptPath, extra)
+	argv, env, err := build(h, scriptPath, extra)
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Argv: argv, Text: ShellText(argv)}, nil
+	return planFor(argv, env), nil
 }
 
 // customPlan 自訂指令是 shell 文字：Orca 直接打進 shell，原地執行則交給使用者的 shell -c。
@@ -176,11 +197,13 @@ func TunnelPlan(h store.Host, t store.Tunnel, scriptPath string) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	argv, err := build(h, scriptPath, append(targs, extra...))
+	argv, env, err := build(h, scriptPath, append(targs, extra...))
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Argv: argv, Text: ShellText(argv) + tunnelEpilogue()}, nil
+	p := planFor(argv, env)
+	p.Text += tunnelEpilogue()
+	return p, nil
 }
 
 // TunnelCloseDelay 是 tunnel 結束後保留分頁的秒數；測試可縮短。
@@ -191,4 +214,13 @@ var TunnelCloseDelay = 3
 func tunnelEpilogue() string {
 	n := strconv.Itoa(TunnelCloseDelay)
 	return `; sshm_rc=$?; printf '\n%s\n' "Tunnel 已結束（代碼 ${sshm_rc}），` + n + ` 秒後關閉此分頁"; sleep ` + n + `; exit "$sshm_rc"`
+}
+
+// PasswordLoginArgv 組出以 expect 腳本自動輸入密碼的 argv 與要加入的環境變數（含密碼），
+// extra 接在 ssh 參數中（供 sshm agent 安裝公鑰）。
+func PasswordLoginArgv(h store.Host, scriptPath string, extra []string) ([]string, []string, error) {
+	if h.Auth != store.AuthPassword {
+		return nil, nil, errors.New("只支援密碼認證的機器")
+	}
+	return build(h, scriptPath, extra)
 }

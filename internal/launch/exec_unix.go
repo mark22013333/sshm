@@ -11,8 +11,8 @@ import (
 	"syscall"
 )
 
-// Exec 以 syscall.Exec 取代目前行程執行 argv；成功時不會回傳。
-func Exec(argv []string) error {
+// Exec 以 syscall.Exec 取代目前行程執行 argv，env 會取代目前環境中的同名變數；成功時不會回傳。
+func Exec(argv, env []string) error {
 	if len(argv) == 0 {
 		return fmt.Errorf("沒有要執行的指令")
 	}
@@ -24,7 +24,7 @@ func Exec(argv []string) error {
 		}
 		bin = p
 	}
-	if err := syscall.Exec(bin, argv, os.Environ()); err != nil {
+	if err := syscall.Exec(bin, argv, mergeEnv(os.Environ(), env)); err != nil {
 		return fmt.Errorf("執行 %s 失敗：%w", bin, err)
 	}
 	return nil

@@ -89,6 +89,7 @@ func startLogin(t *testing.T, fakebinDir string, h store.Host, env ...string) *l
 	}
 	cmd := exec.Command(plan.Argv[0], plan.Argv[1:]...)
 	cmd.Env = append(os.Environ(), "PATH="+fakebin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cmd.Env = append(cmd.Env, plan.Env...)
 	cmd.Env = append(cmd.Env, env...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -205,7 +206,11 @@ func TestLoginScriptSendsPasswordAtPrompt(t *testing.T) {
 	r := startLogin(t, "../../testdata/fakebin-target", store.Host{Name: "n", Host: "10.0.0.24", Port: 2222, User: "helpdesk",
 		Auth: "password", Password: password, ExtraArgs: `-J jump -o "ServerAliveInterval=30"`})
 	args := r.waitFor("ARGS: ")
+	childEnv := r.waitFor("CHILD_ENV=[")
 	got := r.waitFor("GOT_PASSWORD=[")
+	if childEnv != "unset]" {
+		t.Errorf("密碼環境變數不應傳給 ssh：%q", childEnv)
+	}
 
 	wantArgs := "-o StrictHostKeyChecking=accept-new -p 2222 -J jump -o ServerAliveInterval=30 -- helpdesk@10.0.0.24"
 	if args != wantArgs {

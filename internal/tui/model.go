@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mark22013333/sshm/internal/agentaccess"
 	"github.com/mark22013333/sshm/internal/connect"
 	"github.com/mark22013333/sshm/internal/store"
 	"github.com/mark22013333/sshm/internal/tunnelstate"
@@ -20,14 +21,17 @@ type Options struct {
 	StartAdd   bool   // 直接開新增表單（sshm add）
 	Orca       connect.OrcaEnv
 	InOrca     bool
-	Runner     connect.Runner // 測試可替換；nil 時用 connect.ExecRunner
-	StatePath  string         // tunnel 狀態檔 state.json 的路徑
+	Runner     connect.Runner       // 測試可替換；nil 時用 connect.ExecRunner
+	StatePath  string               // tunnel 狀態檔 state.json 的路徑
+	Agent      *agentaccess.Manager // AI agent 開通；nil 時 Ctrl+O 只顯示錯誤
 }
 
 // Result 是 TUI 結束後交給呼叫端的動作。
 type Result struct {
 	// ExecArgv 非空時，呼叫端要以 syscall.Exec 原地執行。
 	ExecArgv []string
+	// ExecEnv 是原地執行時要額外加入的環境變數（密碼經此交給 expect，不放 argv）。
+	ExecEnv []string
 }
 
 type page int
@@ -46,6 +50,8 @@ const (
 	modeBusy
 	modeTunnelForm
 	modeConfirmTunnelDelete
+	modeAgentConfirm
+	modeAgentLocalOnly
 )
 
 // Model 是 TUI 的狀態。
@@ -65,6 +71,11 @@ type Model struct {
 	exitOnForm bool // sshm add：表單結束即離開
 	deleteID   string
 	busyMsg    string
+
+	// AI agent 開通／停用確認中的計畫
+	agentEnable    *agentaccess.EnablePlan
+	agentDisable   *agentaccess.DisablePlan
+	agentRemoteErr string
 
 	// Tunnel 頁
 	tCursor  int
@@ -152,6 +163,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tunnelActionMsg:
 		return m, m.applyTunnelAction(msg)
+	case agentEnableDoneMsg, agentRemoteDoneMsg, agentLocalDoneMsg:
+		return m, m.applyAgentMsg(msg)
 	case orcaDoneMsg:
 		m.mode = modeList
 		if msg.err != nil {
@@ -174,6 +187,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateTunnelForm(msg)
 		case modeConfirmTunnelDelete:
 			return m.updateTunnelConfirm(msg)
+		case modeAgentConfirm:
+			return m.updateAgentConfirm(msg)
+		case modeAgentLocalOnly:
+			return m.updateAgentLocalOnly(msg)
 		}
 		if msg.String() == "tab" {
 			if m.page == pageHosts {
@@ -240,7 +257,7 @@ func (m *Model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.exitOnForm {
 			return m, tea.Quit
 		}
-		m.setStatus("已儲存「"+h.Name+"」", false)
+		m.setStatus("已儲存「"+h.Name+"」"+m.syncAgentAfterSave(orig, editing, id), false)
 		m.rebuild(id)
 	}
 	return m, cmd
@@ -273,6 +290,8 @@ func (m *Model) View() string {
 		return m.form.view()
 	case modeTunnelForm:
 		return m.tForm.view()
+	case modeAgentConfirm, modeAgentLocalOnly:
+		return m.tabsView() + "\n\n" + m.agentView()
 	}
 	header := m.tabsView()
 	if m.page == pageTunnels {
@@ -307,6 +326,8 @@ func (m *Model) footerView() string {
 			q += "以下 tunnel 引用這台機器，設定會保留但無法啟動：" + strings.Join(used, "、") + "。"
 		}
 		status = styleWarn.Render(q + "按 y 確認，其他鍵取消")
+	case m.mode == modeBusy && m.busyMsg != "":
+		status = styleInfo.Render(m.busyMsg)
 	case m.mode == modeBusy:
 		status = styleInfo.Render("正在開啟 Orca 分頁…")
 	case m.status != "" && m.statusErr:
@@ -318,7 +339,7 @@ func (m *Model) footerView() string {
 	if m.opts.InOrca {
 		where = "Enter 原地 · Shift+Enter／Ctrl+T 新分頁"
 	}
-	help := styleHelp.Render(where + " · ←→ 折疊 · Ctrl+N 新增 · Ctrl+E 編輯 · Ctrl+D 複製 · Ctrl+X 刪除 · Tab 切頁 · Esc 清空/離開")
+	help := styleHelp.Render(where + " · ←→ 折疊 · Ctrl+N 新增 · Ctrl+E 編輯 · Ctrl+D 複製 · Ctrl+X 刪除 · Ctrl+O AI agent 開通／停用 · Tab 切頁 · Esc 清空/離開")
 	if status == "" {
 		return help
 	}

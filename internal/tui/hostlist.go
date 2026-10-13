@@ -210,8 +210,12 @@ func (m *Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("已複製「"+h.Name+"」", false)
 		m.rebuild(id)
 		return m, nil
+	case "ctrl+o":
+		return m.toggleAgent()
 	case "ctrl+x":
-		if h, ok := m.currentHost(); ok {
+		if h, ok := m.currentHost(); ok && h.Agent != nil {
+			m.setStatus("「"+store.Printable(h.Name)+"」已開通給 AI agent，請先按 Ctrl+O 停用再刪除", true)
+		} else if ok {
 			m.mode, m.deleteID = modeConfirmDelete, h.ID
 		} else {
 			m.setStatus("請先選一台機器", true)
@@ -247,7 +251,7 @@ func (m *Model) connect(h store.Host, newTab bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if !newTab {
-		m.result.ExecArgv = plan.Argv
+		m.result.ExecArgv, m.result.ExecEnv = plan.Argv, plan.Env
 		return m, tea.Quit
 	}
 	title := connect.Title(store.ColorEmoji(m.file.EffectiveColor(h)), h.Name)
@@ -293,7 +297,7 @@ func (m *Model) rowView(r row, selected bool) string {
 	if port <= 0 {
 		port = 22
 	}
-	sub := styleDim.Render(fmt.Sprintf("%s@%s:%d", h.User, h.Host, port))
+	sub := styleDim.Render(fmt.Sprintf("%s@%s:%d", h.User, h.Host, port)) + m.agentRowMark(h)
 	return marker + "  " + bar + " " + name + "\n" + "    " + bar + " " + sub
 }
 

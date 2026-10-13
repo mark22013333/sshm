@@ -54,8 +54,8 @@ func TestHostPlan(t *testing.T) {
 		{
 			name:     "password",
 			host:     with(func(h *store.Host) { h.Auth = "password"; h.Password = "secret" }),
-			wantArgv: []string{script, "2222", "helpdesk", "10.0.0.24", "secret"},
-			wantText: " /cfg/sshm/sshm-login.exp 2222 helpdesk 10.0.0.24 secret",
+			wantArgv: []string{script, "2222", "helpdesk", "10.0.0.24"},
+			wantText: " SSHM_PASSWORD=secret /cfg/sshm/sshm-login.exp 2222 helpdesk 10.0.0.24",
 		},
 		{
 			name: "password 含空白引號與 $ 並帶 extraArgs",
@@ -64,8 +64,8 @@ func TestHostPlan(t *testing.T) {
 				h.Password = `a b'c"$HOME`
 				h.ExtraArgs = `-J jump -o "ProxyCommand=nc %h %p"`
 			}),
-			wantArgv: []string{script, "2222", "helpdesk", "10.0.0.24", `a b'c"$HOME`, "-J", "jump", "-o", "ProxyCommand=nc %h %p"},
-			wantText: ` /cfg/sshm/sshm-login.exp 2222 helpdesk 10.0.0.24 'a b'\''c"$HOME' -J jump -o 'ProxyCommand=nc %h %p'`,
+			wantArgv: []string{script, "2222", "helpdesk", "10.0.0.24", "-J", "jump", "-o", "ProxyCommand=nc %h %p"},
+			wantText: ` SSHM_PASSWORD='a b'\''c"$HOME' /cfg/sshm/sshm-login.exp 2222 helpdesk 10.0.0.24 -J jump -o 'ProxyCommand=nc %h %p'`,
 		},
 		{
 			name:     "key",
@@ -248,7 +248,7 @@ func TestOrcaCreateArgv(t *testing.T) {
 		"/opt/orca bin/orca", "terminal", "create",
 		"--worktree", "active",
 		`--title=🔴 範例 "PROD"`,
-		"--command= /cfg/sshm/sshm-login.exp 22 helpdesk 10.0.0.24 'p w'",
+		"--command= SSHM_PASSWORD='p w' /cfg/sshm/sshm-login.exp 22 helpdesk 10.0.0.24",
 		"--focus", "--json",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -316,7 +316,7 @@ func TestTunnelEpilogueRunsInShells(t *testing.T) {
 	defer func() { TunnelCloseDelay = old }()
 	dir := t.TempDir()
 	fake := filepath.Join(dir, "fake login.exp")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\nexit 7\n"), 0o700); err != nil {
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nfor a in \"$@\"; do printf 'ARG[%s]\\n' \"$a\"; done\nprintf 'ENV[%s]\\n' \"$SSHM_PASSWORD\"\nexit 7\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	h := store.Host{ID: "h_1", Name: "n", Host: "10.0.0.1", Port: 22, User: "root", Auth: "password", Password: `p w'$x*`}
@@ -332,6 +332,7 @@ func TestTunnelEpilogueRunsInShells(t *testing.T) {
 	for _, a := range p.Argv[1:] {
 		want.WriteString("ARG[" + a + "]\n")
 	}
+	want.WriteString("ENV[" + h.Password + "]\n")
 	for _, shell := range [][]string{{"zsh", "-f", "-c"}, {"bash", "-c"}} {
 		bin, err := exec.LookPath(shell[0])
 		if err != nil {
@@ -350,6 +351,34 @@ func TestTunnelEpilogueRunsInShells(t *testing.T) {
 		}
 		if !strings.Contains(string(out), "Tunnel 已結束（代碼 7），0 秒後關閉此分頁") {
 			t.Errorf("%s: 缺結束訊息：\n%s", shell[0], out)
+		}
+	}
+}
+
+// 審查 #4：密碼不得出現在任何行程的 argv（ps -ww 對同機其他使用者可見），一般連線、tunnel、agent 開通都一樣。
+func TestPasswordNeverInArgv(t *testing.T) {
+	const pw = "test-pass-Argv"
+	h := store.Host{ID: "h_1", Name: "n", Host: "10.0.0.24", Port: 22, User: "helpdesk", Auth: "password", Password: pw}
+	hp, err := HostPlan(h, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := TunnelPlan(h, store.Tunnel{Name: "db", HostID: "h_1", Rules: []store.Rule{{Type: "D", BindPort: 1080}}}, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	la, le, err := PasswordLoginArgv(h, script, []string{"-T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, env := range map[string][]string{"HostPlan": hp.Env, "TunnelPlan": tp.Env, "PasswordLoginArgv": le} {
+		if len(env) != 1 || env[0] != PasswordEnv+"="+pw {
+			t.Errorf("%s 應以環境變數傳密碼：%q", name, env)
+		}
+	}
+	for name, argv := range map[string][]string{"HostPlan": hp.Argv, "TunnelPlan": tp.Argv, "PasswordLoginArgv": la} {
+		if strings.Contains(strings.Join(argv, "\x00"), pw) {
+			t.Errorf("%s 的 argv 含密碼：%q", name, argv)
 		}
 	}
 }
