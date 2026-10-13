@@ -1,4 +1,4 @@
-# README 截圖：機器清單、搜尋、新增表單、Tunnel 頁、Tunnel 編輯表單。
+# README 截圖：機器清單、搜尋、新增表單、Tunnel 頁、Tunnel 編輯表單、關於頁。
 # 在 repo 根目錄執行：vhs docs/tapes/sshm.tape
 # 全程只用 docs/tapes/demo/ 的虛構資料與假 orca；不按 Enter 連線，不會觸發任何 ssh。
 Output "docs/tapes/.out/sshm.gif"
@@ -75,8 +75,17 @@ Sleep 500ms
 Screenshot "docs/images/tunnel-form.png"
 Sleep 500ms
 
+# (f) 關於頁：從 Tunnel 頁再按 Tab；版本與「已是最新版」來自 demo-env.sh 預寫的快取，不連 GitHub
 Hide
 Escape
-Sleep 300ms
+Sleep 500ms
+Tab
+Sleep 1s
+Show
+Sleep 500ms
+Screenshot "docs/images/about-page.png"
+Sleep 500ms
+
+Hide
 Escape
 Sleep 500ms

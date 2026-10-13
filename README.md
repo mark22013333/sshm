@@ -1,8 +1,8 @@
 # sshm
 
-macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線；在 Orca 裡按 Shift+Enter 會開新分頁連線。規格見 [docs/spec.md](docs/spec.md)。
+macOS 上的 SSH 機器管理 TUI。按 Enter 在目前的 terminal 原地連線；在 Orca 裡按 Shift+Enter 會開新分頁連線。另外可以管理 SSH 轉送（Tunnel 頁）、把機器開通給 AI agent 用專用金鑰連線，並在「關於」頁一鍵更新到最新版。規格見 [docs/spec.md](docs/spec.md)，各版變更見 [CHANGELOG.md](CHANGELOG.md)。
 
-![sshm 機器清單：依群組折疊（「雲端主機」已收起），每台機器左側有顏色條，名稱下方是 user@host:port](docs/images/host-list.png)
+![sshm 機器清單：依群組折疊（「雲端主機」已收起），每台機器左側有顏色條，名稱下方是 user@host:port，已開通給 AI agent 的機器後面標 🤖 別名](docs/images/host-list.png)
 
 > 本頁截圖全部使用虛構的展示資料，重製方式見 [docs/tapes/README.md](docs/tapes/README.md)。
 
@@ -24,6 +24,8 @@ sshm zsh-widget >> ~/.zshrc
 # 4. 重新載入
 source ~/.zshrc
 ```
+
+步驟 3 的 Ctrl+O 只在 **zsh 提示列**上作用（叫出 sshm）；進到 sshm 的機器清單後，Ctrl+O 是另一個功能：開通／停用選取機器的 AI agent 存取（會先列出要做的事，按 y 才執行）。
 
 確認版本：`sshm --version`。升級可在 TUI 的「關於」頁按 U（見「關於頁與更新」），或重跑步驟 1。
 
@@ -65,7 +67,7 @@ sshm -- add       # 搜尋字剛好跟子指令同名時，加 -- 當成搜尋�
 | Shift+Enter／Ctrl+T | 在 Orca 中開新分頁連線，不在 Orca 時改為原地連線（Orca 把 Shift+Enter 送成 ESC+Enter，等同 Alt+Enter；Cmd+Enter 不會送進 terminal，無效） |
 | ←→ | 折疊／展開群組 |
 | Ctrl+N／Ctrl+E／Ctrl+D／Ctrl+X | 新增／編輯／複製／刪除（刪除要按 y 確認；已開通給 AI agent 的要先停用） |
-| Ctrl+O | 開通／停用選取機器的 AI agent 存取（見「給 AI agent 使用」，要按 y 確認） |
+| Ctrl+O | 開通／停用選取機器的 AI agent 存取（見「給 AI agent 使用」，要按 y 確認）。和 zsh 提示列叫出 sshm 的 Ctrl+O 是不同功能 |
 | Tab | 切到下一頁（「機器」→「Tunnel」→「關於」輪流） |
 | Esc | 清空搜尋，再按一次離開 |
 
@@ -107,6 +109,8 @@ Ctrl+N 開「新增機器」表單（Ctrl+E 編輯也是同一個表單）。必
 ## 關於頁與更新
 
 在「Tunnel」頁再按一次 Tab 進入「關於」頁，內容超過畫面時用 ↑↓／PgUp／PgDn 捲動：
+
+![關於頁：目前版本與最新版本皆為 v0.4.0、更新狀態「已是最新版」，下面列出 hosts.json、agent 別名設定、金鑰目錄與執行檔的實際路徑，再往下是各頁快捷鍵](docs/images/about-page.png)
 
 - **版本**：目前版本、GitHub 上的最新版本、能否自動更新；不能時附上手動指令。
 - **檔案位置**：hosts.json、`~/.ssh/sshm_agents.conf`、`~/.ssh/sshm/` 金鑰目錄、執行檔（皆為解析 symlink 後的實際路徑）。
@@ -302,6 +306,10 @@ stateDiagram-v2
 - **密碼不能含 emoji 等非 BMP 字元**：macOS 內建的 expect 是 Tcl 8.5，非 BMP 字元送出時會被重複編碼，導致密碼錯誤。中文等 BMP 字元正常。
 - **AI agent 的金鑰沒有 passphrase**：任何能讀 `~/.ssh/sshm/` 的程式都能用它登入已開通的機器，請只開通需要的機器，用完就停用。
 - **新分頁的 shell 要是 POSIX 相容的 shell（zsh、bash、sh）**：連線指令用 POSIX 單引號規則跳脫。fish 對單引號內的 `\` 有不同解讀，密碼或參數含 `\`、`'` 時可能出錯。
+
+## 版本紀錄
+
+各版新增與修正的重點整理在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 發版（維護者）
 
