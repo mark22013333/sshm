@@ -45,6 +45,8 @@ func Export(hostsPath, dest string, opt ExportOptions) (ExportResult, error) {
 		if !opt.WithPasswords {
 			h.Password = ""
 		}
+		// AI agent 開通狀態指向本機的金鑰與別名，帶到別台沒有意義
+		h.Agent = nil
 		out.Hosts[i] = h
 	}
 	out.Tunnels = nil
@@ -115,6 +117,10 @@ func ReadImportFile(path string) (*store.File, error) {
 	in, err := store.Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("匯入檔 %s %w", path, err)
+	}
+	// AI agent 開通狀態是本機狀態，不從匯入檔取得
+	for i := range in.Hosts {
+		in.Hosts[i].Agent = nil
 	}
 	var problems []string
 	hostIDs := map[string]bool{}
@@ -383,7 +389,9 @@ func Merge(f, in *store.File, overwrite bool) Stats {
 			s.Added++
 		case len(hostDiffs(f.Hosts[i], h)) == 0:
 		case overwrite:
+			agent := f.Hosts[i].Agent
 			f.Hosts[i], _ = keepPassword(f.Hosts[i], h)
+			f.Hosts[i].Agent = agent
 			written = &f.Hosts[i]
 			s.Overwritten++
 		default:

@@ -38,7 +38,9 @@ type Host struct {
 	Color         string `json:"color"`
 	ExtraArgs     string `json:"extraArgs"`
 	CustomCommand string `json:"customCommand"`
-	Extra         Extra  `json:"-"`
+	// Agent 非 nil 表示已開通給 AI agent（sshm agent enable）；是本機狀態，匯出時不帶。
+	Agent *AgentAccess `json:"agent,omitempty"`
+	Extra Extra        `json:"-"`
 }
 
 type Tunnel struct {
@@ -66,6 +68,7 @@ type (
 	hostAlias   Host
 	tunnelAlias Tunnel
 	ruleAlias   Rule
+	agentAlias  AgentAccess
 )
 
 func (f *File) UnmarshalJSON(b []byte) error {

@@ -69,6 +69,8 @@ func (f *File) DuplicateHost(id string) (string, error) {
 	c := f.Hosts[i]
 	c.ID = NewID("h")
 	c.Name += " (複本)"
+	// 別名與金鑰屬於原機器，複本要自行開通
+	c.Agent = nil
 	if c.Extra != nil {
 		cp := make(Extra, len(c.Extra))
 		for k, v := range c.Extra {

@@ -48,6 +48,11 @@ func ValidateHost(h Host) error {
 	if h.Port < 0 || h.Port > 65535 {
 		return errors.New("port 必須是 1–65535 的數字")
 	}
+	if h.Agent != nil {
+		if err := ValidateAgent(*h.Agent); err != nil {
+			return err
+		}
+	}
 	switch h.Auth {
 	case AuthPassword, AuthNone, "":
 	case AuthKey:
