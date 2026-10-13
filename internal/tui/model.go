@@ -224,6 +224,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.page = pageHosts
+			m.setStatus("", false)
 			return m, nil
 		}
 		switch m.page {

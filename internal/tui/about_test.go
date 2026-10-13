@@ -269,3 +269,26 @@ func TestAboutUpdateNotWritableShowsManual(t *testing.T) {
 		t.Fatal("不可寫時按 U 不應嘗試更新")
 	}
 }
+
+func TestAboutStatusClearedWhenBackToHosts(t *testing.T) {
+	up := &fakeUpdate{current: "v0.3.0", latest: "v0.4.0", elig: selfupdate.Eligibility{OK: true},
+		applyErr: errors.New("下載 checksums.txt 失敗：HTTP 503")}
+	m := newAboutModel(t, up)
+	runInit(t, m)
+	send(t, m, "tab", "tab")
+	m.Update(send(t, m, "u")())
+	if !strings.Contains(m.status, "更新失敗") {
+		t.Fatalf("前置條件：關於頁應有失敗訊息，status=%q", m.status)
+	}
+	send(t, m, "tab")
+	if m.page != pageHosts {
+		t.Fatalf("page = %d", m.page)
+	}
+	v := m.View()
+	if m.status != "" || m.statusErr || strings.Contains(v, "更新失敗") {
+		t.Fatalf("回機器頁應清掉關於頁的狀態：status=%q", m.status)
+	}
+	if !strings.Contains(v, "有新版 v0.4.0，到「關於」按 U 更新") {
+		t.Fatalf("回機器頁應立即顯示新版提示：%s", v)
+	}
+}
