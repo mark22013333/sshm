@@ -197,3 +197,4 @@ JSON 格式同第 3 節。
 - 不自動更新的情況（關於頁標示原因並附手動做法）：開發版（`go install …@latest`）；非 darwin 或架構不是 arm64／amd64；取不到執行檔路徑；執行檔目錄不可寫（`access(2)` 判斷，附 `curl … | tar xz -C <目錄> sshm`，不嘗試 sudo）。
 - 更新（關於頁按 U）：重新查詢 latest → 不比目前新則回報已是最新 → 下載 `checksums.txt` 與 `sshm_darwin_<arch>.tar.gz` → SHA-256 比對 → 在記憶體解出 tar.gz 根目錄名為 `sshm` 的唯一一般檔案（其他項目忽略；symlink、重複、空檔拒絕）→ `os.Executable()` 經 `EvalSymlinks` 的真實路徑同目錄建暫存檔、寫入、fsync、chmod 成原權限、rename 取代。任何一步失敗都不改動原檔（暫存檔移除）。成功提示「已更新為 vX.Y.Z，請重開 sshm」，之後再按 U 不重複下載。
 - 網路限制：只接受 https、無帳密、預設 port 的 `github.com`、`api.github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`；每一跳 redirect 與最終網址都檢查，最多 10 跳。上限：API 回應 1 MiB、checksums 64 KiB、壓縮檔 64 MiB、解出的執行檔 128 MiB（解壓總量另有上限）；下載整體 5 分鐘逾時。
+- 端對端驗證：`SSHM_E2E_UPDATE=1 go test -run TestE2EUpdateRealBinary -v ./internal/selfupdate/` 以 GoReleaser 相同的 ldflags 建出 0.3.0、0.4.0 兩個執行檔，httptest 模擬 release，對臨時目錄中經 symlink 呼叫的舊版走完整更新後執行 `--version` 確認；不連真實 GitHub。
