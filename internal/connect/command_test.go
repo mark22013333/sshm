@@ -70,8 +70,8 @@ func TestHostPlan(t *testing.T) {
 		{
 			name:     "key",
 			host:     with(func(h *store.Host) { h.Auth = "key"; h.IdentityFile = "/k/my key" }),
-			wantArgv: []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "-i", "/k/my key", "--", "helpdesk@10.0.0.24"},
-			wantText: " ssh -o StrictHostKeyChecking=accept-new -p 2222 -i '/k/my key' -- helpdesk@10.0.0.24",
+			wantArgv: []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "-i", "/k/my key", "-o", "IdentitiesOnly=yes", "--", "helpdesk@10.0.0.24"},
+			wantText: " ssh -o StrictHostKeyChecking=accept-new -p 2222 -i '/k/my key' -o IdentitiesOnly=yes -- helpdesk@10.0.0.24",
 		},
 		{
 			name: "key 帶 extraArgs",
@@ -80,7 +80,7 @@ func TestHostPlan(t *testing.T) {
 				h.IdentityFile = "/k/id"
 				h.ExtraArgs = "-J jump -o ServerAliveInterval=30"
 			}),
-			wantArgv: []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "-i", "/k/id", "-J", "jump", "-o", "ServerAliveInterval=30", "--", "helpdesk@10.0.0.24"},
+			wantArgv: []string{"ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", "2222", "-i", "/k/id", "-o", "IdentitiesOnly=yes", "-J", "jump", "-o", "ServerAliveInterval=30", "--", "helpdesk@10.0.0.24"},
 		},
 		{
 			name:     "none 預設 port 22",
