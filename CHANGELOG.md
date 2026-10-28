@@ -2,7 +2,7 @@
 
 每一版新增與修正的重點。完整的變更見 [GitHub Releases](https://github.com/mark22013333/sshm/releases) 或 `git log`。
 
-## 未發布
+## v0.4.1（2026-10-28）
 
 修正
 
