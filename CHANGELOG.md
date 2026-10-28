@@ -2,6 +2,12 @@
 
 每一版新增與修正的重點。完整的變更見 [GitHub Releases](https://github.com/mark22013333/sshm/releases) 或 `git log`。
 
+## 未發布
+
+修正
+
+- 密碼登入的機器不再先送 ssh-agent 裡的金鑰：agent 有 6 把以上金鑰時，伺服器會在密碼提示前以 Too many authentication failures 斷線。金鑰登入的機器改為只送指定的金鑰（IdentitiesOnly）。
+
 ## v0.4.0（2026-10-13）
 
 新增

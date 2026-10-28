@@ -53,7 +53,8 @@ func sshArgs(h store.Host, extra []string) ([]string, error) {
 		if h.IdentityFile == "" {
 			return nil, errors.New("認證方式為 key，但未設定金鑰檔")
 		}
-		argv = append(argv, "-i", h.IdentityFile)
+		// 只送指定的金鑰：agent 裡的其他金鑰會先被送出，用光伺服器的 MaxAuthTries（預設 6）
+		argv = append(argv, "-i", h.IdentityFile, "-o", "IdentitiesOnly=yes")
 	case store.AuthNone, "":
 	default:
 		return nil, fmt.Errorf("不支援的認證方式 %q", h.Auth)

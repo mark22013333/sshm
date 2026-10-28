@@ -214,7 +214,7 @@ func TestEnterExecInPlaceAndNonOrcaShiftEnter(t *testing.T) {
 	if !isQuit(send(t, m, "alt+enter")) || called {
 		t.Fatal("不在 Orca 時 shift+enter 應退回原地連線")
 	}
-	if got := strings.Join(m.Result().ExecArgv, " "); !strings.Contains(got, "-i /k -- dba@db") {
+	if got := strings.Join(m.Result().ExecArgv, " "); !strings.Contains(got, "-i /k -o IdentitiesOnly=yes -- dba@db") {
 		t.Fatalf("exec = %q", got)
 	}
 }

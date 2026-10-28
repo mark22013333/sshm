@@ -231,7 +231,7 @@ flowchart TD
     Q --> C
     C -->|"customCommand 有值"| CC["整段改用自訂指令"]
     C -->|"auth = password"| P["SSHM_PASSWORD=… sshm-login.exp port user host [extraArgs]<br/>（密碼經環境變數交給 expect，自動送密碼）"]
-    C -->|"auth = key"| K["ssh -o StrictHostKeyChecking=accept-new<br/>-p port -i identityFile [extraArgs] -- user@host"]
+    C -->|"auth = key"| K["ssh -o StrictHostKeyChecking=accept-new<br/>-p port -i identityFile -o IdentitiesOnly=yes [extraArgs] -- user@host"]
     C -->|"auth = none"| N["同 key 但不帶 -i<br/>（交給 ssh-agent 或 ~/.ssh/config）"]
 ```
 

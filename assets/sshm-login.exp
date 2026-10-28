@@ -22,7 +22,8 @@ set quiet_ms 800
 # 候選提示：最後一行以「password:」或「password for …:」結尾（後面可接空白或色碼）。
 set prompt_re {(?i)[^\r\n]*password(?: for [^\r\n]*)?:(?:[ \t]|\x1b\[[0-9;?]*[A-Za-z])*$}
 
-spawn ssh -o StrictHostKeyChecking=accept-new -p $port {*}$extra -- $username@$hostname
+# 關閉金鑰認證：agent 裡的金鑰會在密碼提示前用光伺服器的 MaxAuthTries（預設 6），被斷線。
+spawn ssh -o StrictHostKeyChecking=accept-new -o PubkeyAuthentication=no -p $port {*}$extra -- $username@$hostname
 set start [clock seconds]
 
 # 提示行是否指名本次目標（OpenSSH 三種格式）；以字串比對，user、host 不當 regex。

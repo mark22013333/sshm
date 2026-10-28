@@ -212,7 +212,7 @@ func TestLoginScriptSendsPasswordAtPrompt(t *testing.T) {
 		t.Errorf("密碼環境變數不應傳給 ssh：%q", childEnv)
 	}
 
-	wantArgs := "-o StrictHostKeyChecking=accept-new -p 2222 -J jump -o ServerAliveInterval=30 -- helpdesk@10.0.0.24"
+	wantArgs := "-o StrictHostKeyChecking=accept-new -o PubkeyAuthentication=no -p 2222 -J jump -o ServerAliveInterval=30 -- helpdesk@10.0.0.24"
 	if args != wantArgs {
 		t.Errorf("ssh args = %q\nwant       %q", args, wantArgs)
 	}
